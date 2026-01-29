@@ -5,9 +5,15 @@
 }
 
 .header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   padding: 16px;
   border-bottom: 1px solid #313244;
   text-align: center;
+  background: #1e1e2e;
+  z-index: 100;
 }
 
 .header h1 {
@@ -17,8 +23,9 @@
 
 .content {
   flex: 1;
-  overflow-y: auto;
+  margin-top: 56px;
   padding-bottom: 80px;
+  overflow-y: auto;
 }
 
 .navbar {
@@ -53,16 +60,18 @@
   font-size: 1.2rem;
 }
 
-/* Log page */
+/* Log page - no scroll */
 .log-page {
   padding: 16px;
+  height: 100%;
+  overflow: hidden;
 }
 
 .date-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .date-row button {
@@ -88,22 +97,22 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .field label {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #a6adc8;
 }
 
 .field input {
-  padding: 12px;
+  padding: 10px;
   background: #313244;
   border: none;
   border-radius: 8px;
@@ -114,17 +123,17 @@
 .toggles {
   display: flex;
   gap: 12px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .toggle {
   flex: 1;
-  padding: 12px;
+  padding: 10px;
   background: #313244;
   border: none;
   border-radius: 8px;
   color: #a6adc8;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .toggle.active {
@@ -133,7 +142,7 @@
 }
 
 .sync-status {
-  margin-top: 16px;
+  margin-top: 12px;
   padding: 8px 12px;
   background: #313244;
   border-radius: 8px;
@@ -147,34 +156,58 @@
   padding: 16px;
 }
 
-.chart-container {
-  height: 250px;
-  margin-bottom: 20px;
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-.stats-summary {
-  display: flex;
-  gap: 12px;
+.filters select {
+  flex: 1;
+  padding: 10px;
+  background: #313244;
+  border: none;
+  border-radius: 8px;
+  color: #cdd6f4;
+  font-size: 0.85rem;
+}
+
+.chart-container {
+  height: 200px;
+  margin-bottom: 16px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .stat {
-  flex: 1;
   background: #313244;
-  padding: 16px;
+  padding: 12px;
   border-radius: 8px;
   text-align: center;
 }
 
 .stat-label {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   color: #6c7086;
   margin-bottom: 4px;
 }
 
 .stat-value {
-  font-size: 1.2rem;
+  display: block;
+  font-size: 1.1rem;
   font-weight: 600;
+}
+
+.stat-avg {
+  display: block;
+  font-size: 0.7rem;
+  color: #6c7086;
+  margin-top: 4px;
 }
 
 /* Phases page */
@@ -203,29 +236,44 @@
 .phase-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
   padding: 12px;
   background: #313244;
   border-radius: 8px;
 }
 
-.phase-item span:first-child {
-  flex: 1;
+.phase-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.phase-name {
+  font-size: 0.95rem;
+  font-weight: 500;
 }
 
 .phase-date {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: #6c7086;
 }
 
-.phase-item button {
-  width: 28px;
-  height: 28px;
+.phase-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.phase-actions button {
+  padding: 6px 10px;
   background: #45475a;
   border: none;
   border-radius: 6px;
+  color: #cdd6f4;
+  font-size: 0.8rem;
+}
+
+.phase-actions button.del {
   color: #f38ba8;
-  font-size: 0.9rem;
 }
 
 .empty {

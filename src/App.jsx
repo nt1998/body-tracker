@@ -21,33 +21,31 @@ function App() {
   const [entry, setEntry] = useState({
     weight: '',
     bodyFat: '',
-    waist: '',
-    muscleMass: '',
+    musclePct: '',
+    visceralFat: '',
     creatine: false,
     vitamins: false
   })
   const [phases, setPhases] = useState([])
   const [github, setGithub] = useState({ token: '', repo: '', owner: '', connected: false })
   const [syncStatus, setSyncStatus] = useState('')
+  const [selectedPhase, setSelectedPhase] = useState('all')
+  const [selectedMetric, setSelectedMetric] = useState('weight')
 
-  // Load from localStorage
   useEffect(() => {
     const savedEntries = localStorage.getItem('bodytracker_entries')
     if (savedEntries) setEntries(JSON.parse(savedEntries))
-
     const savedPhases = localStorage.getItem('bodytracker_phases')
     if (savedPhases) setPhases(JSON.parse(savedPhases))
-
     const savedGithub = localStorage.getItem('bodytracker_github')
     if (savedGithub) setGithub(JSON.parse(savedGithub))
   }, [])
 
-  // Load entry for current date
   useEffect(() => {
     if (entries[date]) {
       setEntry(entries[date])
     } else {
-      setEntry({ weight: '', bodyFat: '', waist: '', muscleMass: '', creatine: false, vitamins: false })
+      setEntry({ weight: '', bodyFat: '', musclePct: '', visceralFat: '', creatine: false, vitamins: false })
     }
   }, [date, entries])
 
@@ -66,54 +64,32 @@ function App() {
     setDate(d.toISOString().split('T')[0])
   }
 
-  // GitHub sync
   const syncToGithub = async (data) => {
     if (!github.token || !github.repo || !github.owner) return
     try {
       setSyncStatus('Syncing...')
       const content = btoa(JSON.stringify(data, null, 2))
       const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/data.json`
-
-      // Get current file SHA if exists
       let sha = ''
       try {
-        const getRes = await fetch(apiUrl, {
-          headers: { Authorization: `token ${github.token}` }
-        })
-        if (getRes.ok) {
-          const file = await getRes.json()
-          sha = file.sha
-        }
+        const getRes = await fetch(apiUrl, { headers: { Authorization: `token ${github.token}` } })
+        if (getRes.ok) { const file = await getRes.json(); sha = file.sha }
       } catch {}
-
       await fetch(apiUrl, {
         method: 'PUT',
-        headers: {
-          Authorization: `token ${github.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          message: `Update ${new Date().toISOString()}`,
-          content,
-          ...(sha && { sha })
-        })
+        headers: { Authorization: `token ${github.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `Update ${new Date().toISOString()}`, content, ...(sha && { sha }) })
       })
       setSyncStatus('Synced!')
       setTimeout(() => setSyncStatus(''), 2000)
-    } catch (err) {
-      setSyncStatus('Sync failed')
-      setTimeout(() => setSyncStatus(''), 3000)
-    }
+    } catch { setSyncStatus('Sync failed'); setTimeout(() => setSyncStatus(''), 3000) }
   }
 
   const loadFromGithub = async () => {
     if (!github.token || !github.repo || !github.owner) return
     try {
       setSyncStatus('Loading...')
-      const res = await fetch(
-        `https://api.github.com/repos/${github.owner}/${github.repo}/contents/data.json`,
-        { headers: { Authorization: `token ${github.token}` } }
-      )
+      const res = await fetch(`https://api.github.com/repos/${github.owner}/${github.repo}/contents/data.json`, { headers: { Authorization: `token ${github.token}` } })
       if (res.ok) {
         const file = await res.json()
         const data = JSON.parse(atob(file.content))
@@ -122,10 +98,7 @@ function App() {
         setSyncStatus('Loaded!')
       }
       setTimeout(() => setSyncStatus(''), 2000)
-    } catch {
-      setSyncStatus('Load failed')
-      setTimeout(() => setSyncStatus(''), 3000)
-    }
+    } catch { setSyncStatus('Load failed'); setTimeout(() => setSyncStatus(''), 3000) }
   }
 
   const connectGithub = () => {
@@ -140,11 +113,18 @@ function App() {
     localStorage.setItem('bodytracker_github', JSON.stringify(newGithub))
   }
 
-  // Phases
   const addPhase = () => {
-    const name = prompt('Phase name:')
+    const name = prompt('Phase name (e.g., Cut, Bulk):')
     if (!name) return
-    const newPhases = [...phases, { id: Date.now(), name, start: date, end: '' }]
+    const start = prompt('Start date:', date)
+    if (!start) return
+    const newPhases = [...phases, { id: Date.now(), name, start, end: '' }]
+    setPhases(newPhases)
+    localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
+  }
+
+  const endPhase = (id) => {
+    const newPhases = phases.map(p => p.id === id ? { ...p, end: date } : p)
     setPhases(newPhases)
     localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
   }
@@ -155,22 +135,55 @@ function App() {
     localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
   }
 
-  // Chart data
-  const sortedDates = Object.keys(entries).sort()
+  // Filter dates by phase
+  const getFilteredDates = () => {
+    let dates = Object.keys(entries).sort()
+    if (selectedPhase !== 'all') {
+      const phase = phases.find(p => p.id === parseInt(selectedPhase))
+      if (phase) {
+        dates = dates.filter(d => d >= phase.start && (!phase.end || d <= phase.end))
+      }
+    }
+    return dates
+  }
+
+  // Calculate 5-day rolling average
+  const calc5DayAvg = (dates, field) => {
+    return dates.map((d, i) => {
+      const window = dates.slice(Math.max(0, i - 4), i + 1)
+      const values = window.map(date => parseFloat(entries[date]?.[field])).filter(v => !isNaN(v))
+      return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null
+    })
+  }
+
+  const filteredDates = getFilteredDates()
+  const metrics = [
+    { key: 'weight', label: 'Weight (kg)', color: '#f38ba8' },
+    { key: 'bodyFat', label: 'Body Fat %', color: '#fab387' },
+    { key: 'musclePct', label: 'Muscle %', color: '#a6e3a1' },
+    { key: 'visceralFat', label: 'Visceral Fat', color: '#89b4fa' }
+  ]
+
+  const currentMetric = metrics.find(m => m.key === selectedMetric)
   const chartData = {
-    labels: sortedDates.map(d => d.slice(5)),
+    labels: filteredDates.map(d => d.slice(5)),
     datasets: [
       {
-        label: 'Weight',
-        data: sortedDates.map(d => parseFloat(entries[d].weight) || null),
-        borderColor: '#f38ba8',
-        tension: 0.3
+        label: currentMetric?.label || '',
+        data: filteredDates.map(d => parseFloat(entries[d]?.[selectedMetric]) || null),
+        borderColor: currentMetric?.color,
+        backgroundColor: currentMetric?.color + '33',
+        tension: 0.3,
+        spanGaps: true
       },
       {
-        label: 'Body Fat %',
-        data: sortedDates.map(d => parseFloat(entries[d].bodyFat) || null),
-        borderColor: '#fab387',
-        tension: 0.3
+        label: '5-Day Avg',
+        data: calc5DayAvg(filteredDates, selectedMetric),
+        borderColor: '#cdd6f4',
+        borderDash: [5, 5],
+        tension: 0.3,
+        pointRadius: 0,
+        spanGaps: true
       }
     ]
   }
@@ -183,6 +196,23 @@ function App() {
       x: { ticks: { color: '#6c7086' }, grid: { color: '#313244' } },
       y: { ticks: { color: '#6c7086' }, grid: { color: '#313244' } }
     }
+  }
+
+  // Stats summary
+  const getLatest = (field) => {
+    const dates = Object.keys(entries).sort().reverse()
+    for (const d of dates) {
+      const val = entries[d]?.[field]
+      if (val) return val
+    }
+    return '-'
+  }
+
+  const get5DayAvgLatest = (field) => {
+    const dates = Object.keys(entries).sort().slice(-5)
+    const values = dates.map(d => parseFloat(entries[d]?.[field])).filter(v => !isNaN(v))
+    if (values.length === 0) return '-'
+    return (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)
   }
 
   return (
@@ -203,19 +233,19 @@ function App() {
             <div className="form">
               <div className="field">
                 <label>Weight (kg)</label>
-                <input type="number" inputMode="decimal" value={entry.weight} onChange={(e) => updateEntry('weight', e.target.value)} />
+                <input type="number" inputMode="decimal" step="0.1" value={entry.weight} onChange={(e) => updateEntry('weight', e.target.value)} />
               </div>
               <div className="field">
-                <label>Body Fat (%)</label>
-                <input type="number" inputMode="decimal" value={entry.bodyFat} onChange={(e) => updateEntry('bodyFat', e.target.value)} />
+                <label>Body Fat %</label>
+                <input type="number" inputMode="decimal" step="0.1" value={entry.bodyFat} onChange={(e) => updateEntry('bodyFat', e.target.value)} />
               </div>
               <div className="field">
-                <label>Waist (cm)</label>
-                <input type="number" inputMode="decimal" value={entry.waist} onChange={(e) => updateEntry('waist', e.target.value)} />
+                <label>Muscle %</label>
+                <input type="number" inputMode="decimal" step="0.1" value={entry.musclePct} onChange={(e) => updateEntry('musclePct', e.target.value)} />
               </div>
               <div className="field">
-                <label>Muscle Mass (kg)</label>
-                <input type="number" inputMode="decimal" value={entry.muscleMass} onChange={(e) => updateEntry('muscleMass', e.target.value)} />
+                <label>Visceral Fat</label>
+                <input type="number" inputMode="decimal" step="0.1" value={entry.visceralFat} onChange={(e) => updateEntry('visceralFat', e.target.value)} />
               </div>
 
               <div className="toggles">
@@ -229,18 +259,28 @@ function App() {
 
         {tab === 'stats' && (
           <div className="stats-page">
+            <div className="filters">
+              <select value={selectedMetric} onChange={(e) => setSelectedMetric(e.target.value)}>
+                {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+              </select>
+              <select value={selectedPhase} onChange={(e) => setSelectedPhase(e.target.value)}>
+                <option value="all">All Time</option>
+                {phases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+
             <div className="chart-container">
               <Line data={chartData} options={chartOptions} />
             </div>
-            <div className="stats-summary">
-              <div className="stat">
-                <span className="stat-label">Entries</span>
-                <span className="stat-value">{sortedDates.length}</span>
-              </div>
-              <div className="stat">
-                <span className="stat-label">Latest Weight</span>
-                <span className="stat-value">{sortedDates.length ? entries[sortedDates[sortedDates.length-1]]?.weight || '-' : '-'} kg</span>
-              </div>
+
+            <div className="stats-grid">
+              {metrics.map(m => (
+                <div key={m.key} className="stat">
+                  <span className="stat-label">{m.label}</span>
+                  <span className="stat-value">{getLatest(m.key)}</span>
+                  <span className="stat-avg">5d avg: {get5DayAvgLatest(m.key)}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -251,9 +291,14 @@ function App() {
             <div className="phases-list">
               {phases.map(p => (
                 <div key={p.id} className="phase-item">
-                  <span>{p.name}</span>
-                  <span className="phase-date">{p.start}</span>
-                  <button onClick={() => deletePhase(p.id)}>x</button>
+                  <div className="phase-info">
+                    <span className="phase-name">{p.name}</span>
+                    <span className="phase-date">{p.start} → {p.end || 'ongoing'}</span>
+                  </div>
+                  <div className="phase-actions">
+                    {!p.end && <button onClick={() => endPhase(p.id)}>End</button>}
+                    <button className="del" onClick={() => deletePhase(p.id)}>×</button>
+                  </div>
                 </div>
               ))}
               {phases.length === 0 && <p className="empty">No phases yet</p>}
