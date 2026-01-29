@@ -7,6 +7,7 @@
 .header {
   padding: 16px;
   border-bottom: 1px solid #313244;
+  text-align: center;
 }
 
 .header h1 {
@@ -17,7 +18,7 @@
 .content {
   flex: 1;
   overflow-y: auto;
-  padding-bottom: 60px;
+  padding-bottom: 80px;
 }
 
 .navbar {
@@ -28,19 +29,28 @@
   display: flex;
   background: #181825;
   border-top: 1px solid #313244;
+  padding-bottom: 10px;
 }
 
 .navbar button {
   flex: 1;
-  padding: 16px 8px;
+  padding: 10px 8px;
   background: none;
   border: none;
   color: #6c7086;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .navbar button.active {
   color: #cdd6f4;
+}
+
+.nav-icon {
+  font-size: 1.2rem;
 }
 
 /* Log page */
@@ -122,7 +132,158 @@
   color: #1e1e2e;
 }
 
-.page {
+.sync-status {
+  margin-top: 16px;
+  padding: 8px 12px;
+  background: #313244;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #a6adc8;
+}
+
+/* Stats page */
+.stats-page {
   padding: 16px;
+}
+
+.chart-container {
+  height: 250px;
+  margin-bottom: 20px;
+}
+
+.stats-summary {
+  display: flex;
+  gap: 12px;
+}
+
+.stat {
+  flex: 1;
+  background: #313244;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.8rem;
   color: #6c7086;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+/* Phases page */
+.phases-page {
+  padding: 16px;
+}
+
+.add-btn {
+  width: 100%;
+  padding: 12px;
+  background: #89b4fa;
+  border: none;
+  border-radius: 8px;
+  color: #1e1e2e;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.phases-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phase-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #313244;
+  border-radius: 8px;
+}
+
+.phase-item span:first-child {
+  flex: 1;
+}
+
+.phase-date {
+  font-size: 0.8rem;
+  color: #6c7086;
+}
+
+.phase-item button {
+  width: 28px;
+  height: 28px;
+  background: #45475a;
+  border: none;
+  border-radius: 6px;
+  color: #f38ba8;
+  font-size: 0.9rem;
+}
+
+.empty {
+  color: #6c7086;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Settings page */
+.settings-page {
+  padding: 16px;
+}
+
+.settings-page h2 {
+  font-size: 1.1rem;
+  margin: 0 0 16px 0;
+}
+
+.primary-btn {
+  width: 100%;
+  padding: 12px;
+  background: #89b4fa;
+  border: none;
+  border-radius: 8px;
+  color: #1e1e2e;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.danger-btn {
+  width: 100%;
+  padding: 12px;
+  background: #f38ba8;
+  border: none;
+  border-radius: 8px;
+  color: #1e1e2e;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.connected-info {
+  background: #313244;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.connected-info p {
+  margin: 0 0 12px 0;
+  font-size: 0.9rem;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-row button {
+  flex: 1;
+  margin-top: 0;
 }
