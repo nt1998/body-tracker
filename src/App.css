@@ -1,6 +1,4 @@
 .app {
-  display: flex;
-  flex-direction: column;
   height: 100%;
 }
 
@@ -14,13 +12,14 @@
   font-size: 1.3rem;
 }
 
-.content {
-  flex: 1;
-}
-
 .navbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   display: flex;
   padding-bottom: env(safe-area-inset-bottom);
+  background: #1e1e2e;
 }
 
 .navbar button {
