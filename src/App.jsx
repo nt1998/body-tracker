@@ -39,8 +39,31 @@ function App() {
     const savedPhases = localStorage.getItem('bodytracker_phases')
     if (savedPhases) setPhases(JSON.parse(savedPhases))
     const savedGithub = localStorage.getItem('bodytracker_github')
-    if (savedGithub) setGithub(JSON.parse(savedGithub))
+    if (savedGithub) {
+      const gh = JSON.parse(savedGithub)
+      setGithub(gh)
+      // Auto-sync from GitHub on load
+      if (gh.connected) autoLoadFromGithub(gh)
+    }
   }, [])
+
+  const autoLoadFromGithub = async (gh) => {
+    try {
+      const res = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/contents/data.json`, { headers: { Authorization: `token ${gh.token}` } })
+      if (res.ok) {
+        const file = await res.json()
+        const data = JSON.parse(decodeURIComponent(escape(atob(file.content))))
+        if (data.entries) {
+          setEntries(data.entries)
+          localStorage.setItem('bodytracker_entries', JSON.stringify(data.entries))
+        }
+        if (data.phases) {
+          setPhases(data.phases)
+          localStorage.setItem('bodytracker_phases', JSON.stringify(data.phases))
+        }
+      }
+    } catch {}
+  }
 
   useEffect(() => {
     if (entries[date]) setEntry(entries[date])
@@ -405,10 +428,8 @@ function App() {
             ) : (
               <div className="connected-info">
                 <p>Connected to {github.owner}/{github.repo}</p>
-                <div className="btn-row">
-                  <button className="primary-btn" onClick={loadFromGithub}>Pull Data</button>
-                  <button className="danger-btn" onClick={disconnectGithub}>Disconnect</button>
-                </div>
+                <p className="sync-note">Auto-syncs on load and save</p>
+                <button className="danger-btn" onClick={disconnectGithub}>Disconnect</button>
               </div>
             )}
             {syncStatus && <div className="sync-status">{syncStatus}</div>}

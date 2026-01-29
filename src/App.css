@@ -381,6 +381,11 @@
   font-size: 0.9rem;
 }
 
+.sync-note {
+  font-size: 0.75rem;
+  color: #6c7086;
+}
+
 .btn-row {
   display: flex;
   gap: 8px;
