@@ -4,7 +4,6 @@
 
 .header {
   padding: 16px;
-  padding-top: calc(16px + env(safe-area-inset-top));
 }
 
 .header h1 {
@@ -18,7 +17,6 @@
   left: 0;
   right: 0;
   display: flex;
-  padding-bottom: env(safe-area-inset-bottom);
   background: #1e1e2e;
 }
 
