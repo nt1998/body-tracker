@@ -1,0 +1,33 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  padding: 16px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.content {
+  flex: 1;
+}
+
+.navbar {
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.navbar button {
+  flex: 1;
+  padding: 16px;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 0.8rem;
+}
