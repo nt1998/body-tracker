@@ -60,10 +60,9 @@
   font-size: 1.2rem;
 }
 
-/* Log page - no scroll */
+/* Log page - NO scroll */
 .log-page {
   padding: 16px;
-  height: 100%;
   overflow: hidden;
 }
 
@@ -71,7 +70,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .date-row button {
@@ -97,22 +96,22 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .field label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: #a6adc8;
 }
 
 .field input {
-  padding: 10px;
+  padding: 8px;
   background: #313244;
   border: none;
   border-radius: 8px;
@@ -122,18 +121,17 @@
 
 .toggles {
   display: flex;
-  gap: 12px;
-  margin-top: 4px;
+  gap: 10px;
 }
 
 .toggle {
   flex: 1;
-  padding: 10px;
+  padding: 8px;
   background: #313244;
   border: none;
   border-radius: 8px;
   color: #a6adc8;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .toggle.active {
@@ -142,28 +140,26 @@
 }
 
 .sync-status {
-  margin-top: 12px;
-  padding: 8px 12px;
+  margin-top: 10px;
+  padding: 6px 10px;
   background: #313244;
   border-radius: 8px;
   text-align: center;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #a6adc8;
 }
 
-/* Stats page */
+/* Stats page - scrollable */
 .stats-page {
   padding: 16px;
 }
 
 .filters {
-  display: flex;
-  gap: 8px;
   margin-bottom: 16px;
 }
 
 .filters select {
-  flex: 1;
+  width: 100%;
   padding: 10px;
   background: #313244;
   border: none;
@@ -172,47 +168,97 @@
   font-size: 0.85rem;
 }
 
-.chart-container {
-  height: 200px;
-  margin-bottom: 16px;
+.chart-section {
+  margin-bottom: 20px;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
-.stat {
-  background: #313244;
-  padding: 12px;
-  border-radius: 8px;
-  text-align: center;
-}
-
-.stat-label {
-  display: block;
-  font-size: 0.7rem;
-  color: #6c7086;
-  margin-bottom: 4px;
-}
-
-.stat-value {
-  display: block;
-  font-size: 1.1rem;
+.chart-title {
   font-weight: 600;
+  font-size: 0.9rem;
 }
 
-.stat-avg {
-  display: block;
-  font-size: 0.7rem;
-  color: #6c7086;
-  margin-top: 4px;
+.chart-current {
+  font-size: 0.85rem;
+  color: #a6adc8;
+}
+
+.chart-container {
+  height: 150px;
+  background: #181825;
+  border-radius: 8px;
+  padding: 8px;
 }
 
 /* Phases page */
 .phases-page {
   padding: 16px;
+}
+
+.current-phase-stats {
+  background: #313244;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.current-phase-stats h3 {
+  margin: 0 0 4px 0;
+  font-size: 1rem;
+  color: #89b4fa;
+}
+
+.phase-duration {
+  font-size: 0.8rem;
+  color: #6c7086;
+  margin-bottom: 12px;
+}
+
+.phase-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phase-metric {
+  display: grid;
+  grid-template-columns: 1fr 0.7fr 0.7fr 0.8fr 1fr;
+  gap: 4px;
+  font-size: 0.75rem;
+  padding: 6px 0;
+  border-bottom: 1px solid #45475a;
+}
+
+.phase-metric:last-child {
+  border-bottom: none;
+}
+
+.pm-label {
+  color: #a6adc8;
+}
+
+.pm-current {
+  color: #cdd6f4;
+  font-weight: 600;
+}
+
+.pm-change {
+  color: #fab387;
+}
+
+.pm-weekly {
+  color: #6c7086;
+}
+
+.pm-thisweek {
+  color: #a6e3a1;
+  text-align: right;
 }
 
 .add-btn {
@@ -258,6 +304,11 @@
   color: #6c7086;
 }
 
+.phase-goals {
+  font-size: 0.7rem;
+  color: #a6adc8;
+}
+
 .phase-actions {
   display: flex;
   gap: 6px;
@@ -288,8 +339,12 @@
 }
 
 .settings-page h2 {
-  font-size: 1.1rem;
-  margin: 0 0 16px 0;
+  font-size: 1rem;
+  margin: 16px 0 12px 0;
+}
+
+.settings-page h2:first-child {
+  margin-top: 0;
 }
 
 .primary-btn {

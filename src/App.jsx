@@ -8,29 +8,30 @@ import {
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 } from 'chart.js'
+import annotationPlugin from 'chartjs-plugin-annotation'
 import './App.css'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, annotationPlugin)
+
+const metrics = [
+  { key: 'weight', label: 'Weight', unit: 'kg', color: '#f38ba8' },
+  { key: 'bodyFat', label: 'Body Fat', unit: '%', color: '#fab387' },
+  { key: 'musclePct', label: 'Muscle', unit: '%', color: '#a6e3a1' },
+  { key: 'visceralFat', label: 'Visceral Fat', unit: '', color: '#89b4fa' }
+]
 
 function App() {
   const [tab, setTab] = useState('log')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [entries, setEntries] = useState({})
-  const [entry, setEntry] = useState({
-    weight: '',
-    bodyFat: '',
-    musclePct: '',
-    visceralFat: '',
-    creatine: false,
-    vitamins: false
-  })
+  const [entry, setEntry] = useState({ weight: '', bodyFat: '', musclePct: '', visceralFat: '', creatine: false, vitamins: false })
   const [phases, setPhases] = useState([])
   const [github, setGithub] = useState({ token: '', repo: '', owner: '', connected: false })
   const [syncStatus, setSyncStatus] = useState('')
-  const [selectedPhase, setSelectedPhase] = useState('all')
-  const [selectedMetric, setSelectedMetric] = useState('weight')
+  const [statsPhase, setStatsPhase] = useState('current')
 
   useEffect(() => {
     const savedEntries = localStorage.getItem('bodytracker_entries')
@@ -42,20 +43,22 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (entries[date]) {
-      setEntry(entries[date])
-    } else {
-      setEntry({ weight: '', bodyFat: '', musclePct: '', visceralFat: '', creatine: false, vitamins: false })
-    }
+    if (entries[date]) setEntry(entries[date])
+    else setEntry({ weight: '', bodyFat: '', musclePct: '', visceralFat: '', creatine: false, vitamins: false })
   }, [date, entries])
+
+  const saveAll = (newEntries, newPhases) => {
+    localStorage.setItem('bodytracker_entries', JSON.stringify(newEntries))
+    localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
+    if (github.connected) syncToGithub(newEntries, newPhases)
+  }
 
   const updateEntry = (field, value) => {
     const newEntry = { ...entry, [field]: value }
     setEntry(newEntry)
     const newEntries = { ...entries, [date]: newEntry }
     setEntries(newEntries)
-    localStorage.setItem('bodytracker_entries', JSON.stringify(newEntries))
-    if (github.connected) syncToGithub(newEntries)
+    saveAll(newEntries, phases)
   }
 
   const changeDate = (days) => {
@@ -64,11 +67,12 @@ function App() {
     setDate(d.toISOString().split('T')[0])
   }
 
-  const syncToGithub = async (data) => {
+  const syncToGithub = async (data, phasesData) => {
     if (!github.token || !github.repo || !github.owner) return
     try {
       setSyncStatus('Syncing...')
-      const content = btoa(JSON.stringify(data, null, 2))
+      const payload = { entries: data, phases: phasesData }
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2))))
       const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/data.json`
       let sha = ''
       try {
@@ -92,9 +96,15 @@ function App() {
       const res = await fetch(`https://api.github.com/repos/${github.owner}/${github.repo}/contents/data.json`, { headers: { Authorization: `token ${github.token}` } })
       if (res.ok) {
         const file = await res.json()
-        const data = JSON.parse(atob(file.content))
-        setEntries(data)
-        localStorage.setItem('bodytracker_entries', JSON.stringify(data))
+        const data = JSON.parse(decodeURIComponent(escape(atob(file.content))))
+        if (data.entries) {
+          setEntries(data.entries)
+          localStorage.setItem('bodytracker_entries', JSON.stringify(data.entries))
+        }
+        if (data.phases) {
+          setPhases(data.phases)
+          localStorage.setItem('bodytracker_phases', JSON.stringify(data.phases))
+        }
         setSyncStatus('Loaded!')
       }
       setTimeout(() => setSyncStatus(''), 2000)
@@ -108,112 +118,189 @@ function App() {
   }
 
   const disconnectGithub = () => {
-    const newGithub = { token: '', repo: '', owner: '', connected: false }
-    setGithub(newGithub)
-    localStorage.setItem('bodytracker_github', JSON.stringify(newGithub))
+    setGithub({ token: '', repo: '', owner: '', connected: false })
+    localStorage.setItem('bodytracker_github', JSON.stringify({ token: '', repo: '', owner: '', connected: false }))
   }
+
+  // Phases
+  const getCurrentPhase = () => phases.find(p => !p.end)
 
   const addPhase = () => {
     const name = prompt('Phase name (e.g., Cut, Bulk):')
     if (!name) return
-    const start = prompt('Start date:', date)
-    if (!start) return
-    const newPhases = [...phases, { id: Date.now(), name, start, end: '' }]
+    const goalWeight = prompt('Goal weight (kg):', '')
+    const goalBodyFat = prompt('Goal body fat %:', '')
+    const goalMuscle = prompt('Goal muscle %:', '')
+    const newPhase = {
+      id: Date.now(),
+      name,
+      start: date,
+      end: '',
+      goals: { weight: goalWeight, bodyFat: goalBodyFat, musclePct: goalMuscle }
+    }
+    const newPhases = [...phases, newPhase]
     setPhases(newPhases)
-    localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
+    saveAll(entries, newPhases)
   }
 
   const endPhase = (id) => {
     const newPhases = phases.map(p => p.id === id ? { ...p, end: date } : p)
     setPhases(newPhases)
-    localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
+    saveAll(entries, newPhases)
   }
 
   const deletePhase = (id) => {
     const newPhases = phases.filter(p => p.id !== id)
     setPhases(newPhases)
-    localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
+    saveAll(entries, newPhases)
   }
 
-  // Filter dates by phase
-  const getFilteredDates = () => {
+  // Stats calculations
+  const getPhaseForStats = () => {
+    if (statsPhase === 'all') return null
+    if (statsPhase === 'current') return getCurrentPhase()
+    return phases.find(p => p.id === parseInt(statsPhase))
+  }
+
+  const getFilteredDates = (phase) => {
     let dates = Object.keys(entries).sort()
-    if (selectedPhase !== 'all') {
-      const phase = phases.find(p => p.id === parseInt(selectedPhase))
-      if (phase) {
-        dates = dates.filter(d => d >= phase.start && (!phase.end || d <= phase.end))
-      }
+    if (phase) {
+      dates = dates.filter(d => d >= phase.start && (!phase.end || d <= phase.end))
     }
     return dates
   }
 
-  // Calculate 5-day rolling average
   const calc5DayAvg = (dates, field) => {
     return dates.map((d, i) => {
       const window = dates.slice(Math.max(0, i - 4), i + 1)
-      const values = window.map(date => parseFloat(entries[date]?.[field])).filter(v => !isNaN(v))
+      const values = window.map(dt => parseFloat(entries[dt]?.[field])).filter(v => !isNaN(v))
       return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null
     })
   }
 
-  const filteredDates = getFilteredDates()
-  const metrics = [
-    { key: 'weight', label: 'Weight (kg)', color: '#f38ba8' },
-    { key: 'bodyFat', label: 'Body Fat %', color: '#fab387' },
-    { key: 'musclePct', label: 'Muscle %', color: '#a6e3a1' },
-    { key: 'visceralFat', label: 'Visceral Fat', color: '#89b4fa' }
-  ]
+  const getPhaseStats = (phase) => {
+    if (!phase) return null
+    const dates = getFilteredDates(phase)
+    if (dates.length === 0) return null
 
-  const currentMetric = metrics.find(m => m.key === selectedMetric)
-  const chartData = {
-    labels: filteredDates.map(d => d.slice(5)),
-    datasets: [
-      {
-        label: currentMetric?.label || '',
-        data: filteredDates.map(d => parseFloat(entries[d]?.[selectedMetric]) || null),
-        borderColor: currentMetric?.color,
-        backgroundColor: currentMetric?.color + '33',
-        tension: 0.3,
-        spanGaps: true
-      },
-      {
-        label: '5-Day Avg',
-        data: calc5DayAvg(filteredDates, selectedMetric),
-        borderColor: '#cdd6f4',
-        borderDash: [5, 5],
-        tension: 0.3,
-        pointRadius: 0,
-        spanGaps: true
+    const startDate = new Date(phase.start)
+    const today = new Date()
+    const days = Math.floor((today - startDate) / (1000 * 60 * 60 * 24))
+    const weeks = days / 7
+
+    const stats = {}
+    metrics.forEach(m => {
+      const values = dates.map(d => parseFloat(entries[d]?.[m.key])).filter(v => !isNaN(v))
+      if (values.length < 1) {
+        stats[m.key] = { start: '-', current: '-', change: '-', weeklyAvg: '-', weekChange: '-' }
+        return
       }
-    ]
+      const start = values[0]
+      const current = values[values.length - 1]
+      const change = current - start
+      const weeklyAvg = weeks > 0 ? change / weeks : 0
+
+      // Current week change
+      const weekAgo = new Date(today)
+      weekAgo.setDate(weekAgo.getDate() - 7)
+      const weekAgoStr = weekAgo.toISOString().split('T')[0]
+      const recentDates = dates.filter(d => d >= weekAgoStr)
+      const recentValues = recentDates.map(d => parseFloat(entries[d]?.[m.key])).filter(v => !isNaN(v))
+      const weekChange = recentValues.length >= 2 ? recentValues[recentValues.length - 1] - recentValues[0] : 0
+
+      stats[m.key] = {
+        start: start.toFixed(1),
+        current: current.toFixed(1),
+        change: (change >= 0 ? '+' : '') + change.toFixed(1),
+        weeklyAvg: (weeklyAvg >= 0 ? '+' : '') + weeklyAvg.toFixed(2),
+        weekChange: (weekChange >= 0 ? '+' : '') + weekChange.toFixed(1)
+      }
+    })
+
+    return { days, weeks: weeks.toFixed(1), stats }
   }
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: '#cdd6f4' } } },
-    scales: {
-      x: { ticks: { color: '#6c7086' }, grid: { color: '#313244' } },
-      y: { ticks: { color: '#6c7086' }, grid: { color: '#313244' } }
+  const phase = getPhaseForStats()
+  const filteredDates = getFilteredDates(phase)
+
+  const createChartData = (metric) => {
+    const data = filteredDates.map(d => parseFloat(entries[d]?.[metric.key]) || null)
+    const avg = calc5DayAvg(filteredDates, metric.key)
+
+    return {
+      labels: filteredDates.map(d => d.slice(5)),
+      datasets: [
+        {
+          label: metric.label,
+          data,
+          borderColor: metric.color,
+          backgroundColor: metric.color + '33',
+          tension: 0.3,
+          spanGaps: true
+        },
+        {
+          label: '5-Day Avg',
+          data: avg,
+          borderColor: '#6c7086',
+          borderDash: [5, 5],
+          tension: 0.3,
+          pointRadius: 0,
+          spanGaps: true
+        }
+      ]
     }
   }
 
-  // Stats summary
-  const getLatest = (field) => {
-    const dates = Object.keys(entries).sort().reverse()
-    for (const d of dates) {
-      const val = entries[d]?.[field]
-      if (val) return val
+  const createChartOptions = (metric) => {
+    const opts = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        annotation: { annotations: {} }
+      },
+      scales: {
+        x: { ticks: { color: '#6c7086', maxTicksLimit: 6 }, grid: { color: '#313244' } },
+        y: { ticks: { color: '#6c7086' }, grid: { color: '#313244' } }
+      }
     }
-    return '-'
+
+    // Add goal line if phase has goals
+    if (phase?.goals?.[metric.key]) {
+      const goalVal = parseFloat(phase.goals[metric.key])
+      if (!isNaN(goalVal)) {
+        opts.plugins.annotation.annotations.goalLine = {
+          type: 'line',
+          yMin: goalVal,
+          yMax: goalVal,
+          borderColor: '#a6e3a1',
+          borderWidth: 2,
+          borderDash: [10, 5],
+          label: { display: true, content: `Goal: ${goalVal}`, position: 'end', backgroundColor: '#a6e3a1', color: '#1e1e2e' }
+        }
+      }
+    }
+
+    // Add start line
+    if (phase && filteredDates.length > 0) {
+      const startVal = parseFloat(entries[filteredDates[0]]?.[metric.key])
+      if (!isNaN(startVal)) {
+        opts.plugins.annotation.annotations.startLine = {
+          type: 'line',
+          yMin: startVal,
+          yMax: startVal,
+          borderColor: '#f38ba8',
+          borderWidth: 1,
+          borderDash: [5, 5]
+        }
+      }
+    }
+
+    return opts
   }
 
-  const get5DayAvgLatest = (field) => {
-    const dates = Object.keys(entries).sort().slice(-5)
-    const values = dates.map(d => parseFloat(entries[d]?.[field])).filter(v => !isNaN(v))
-    if (values.length === 0) return '-'
-    return (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)
-  }
+  const currentPhase = getCurrentPhase()
+  const phaseStats = getPhaseStats(currentPhase)
 
   return (
     <div className="app">
@@ -229,25 +316,11 @@ function App() {
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               <button onClick={() => changeDate(1)}>&gt;</button>
             </div>
-
             <div className="form">
-              <div className="field">
-                <label>Weight (kg)</label>
-                <input type="number" inputMode="decimal" step="0.1" value={entry.weight} onChange={(e) => updateEntry('weight', e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Body Fat %</label>
-                <input type="number" inputMode="decimal" step="0.1" value={entry.bodyFat} onChange={(e) => updateEntry('bodyFat', e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Muscle %</label>
-                <input type="number" inputMode="decimal" step="0.1" value={entry.musclePct} onChange={(e) => updateEntry('musclePct', e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Visceral Fat</label>
-                <input type="number" inputMode="decimal" step="0.1" value={entry.visceralFat} onChange={(e) => updateEntry('visceralFat', e.target.value)} />
-              </div>
-
+              <div className="field"><label>Weight (kg)</label><input type="number" inputMode="decimal" step="0.1" value={entry.weight} onChange={(e) => updateEntry('weight', e.target.value)} /></div>
+              <div className="field"><label>Body Fat %</label><input type="number" inputMode="decimal" step="0.1" value={entry.bodyFat} onChange={(e) => updateEntry('bodyFat', e.target.value)} /></div>
+              <div className="field"><label>Muscle %</label><input type="number" inputMode="decimal" step="0.1" value={entry.musclePct} onChange={(e) => updateEntry('musclePct', e.target.value)} /></div>
+              <div className="field"><label>Visceral Fat</label><input type="number" inputMode="decimal" step="0.1" value={entry.visceralFat} onChange={(e) => updateEntry('visceralFat', e.target.value)} /></div>
               <div className="toggles">
                 <button className={entry.creatine ? 'toggle active' : 'toggle'} onClick={() => updateEntry('creatine', !entry.creatine)}>Creatine</button>
                 <button className={entry.vitamins ? 'toggle active' : 'toggle'} onClick={() => updateEntry('vitamins', !entry.vitamins)}>Vitamins</button>
@@ -260,33 +333,45 @@ function App() {
         {tab === 'stats' && (
           <div className="stats-page">
             <div className="filters">
-              <select value={selectedMetric} onChange={(e) => setSelectedMetric(e.target.value)}>
-                {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
-              </select>
-              <select value={selectedPhase} onChange={(e) => setSelectedPhase(e.target.value)}>
+              <select value={statsPhase} onChange={(e) => setStatsPhase(e.target.value)}>
+                <option value="current">Current Phase</option>
                 <option value="all">All Time</option>
                 {phases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-
-            <div className="chart-container">
-              <Line data={chartData} options={chartOptions} />
-            </div>
-
-            <div className="stats-grid">
-              {metrics.map(m => (
-                <div key={m.key} className="stat">
-                  <span className="stat-label">{m.label}</span>
-                  <span className="stat-value">{getLatest(m.key)}</span>
-                  <span className="stat-avg">5d avg: {get5DayAvgLatest(m.key)}</span>
+            {metrics.map(m => (
+              <div key={m.key} className="chart-section">
+                <div className="chart-header">
+                  <span className="chart-title" style={{ color: m.color }}>{m.label}</span>
+                  <span className="chart-current">{entries[Object.keys(entries).sort().pop()]?.[m.key] || '-'} {m.unit}</span>
                 </div>
-              ))}
-            </div>
+                <div className="chart-container">
+                  <Line data={createChartData(m)} options={createChartOptions(m)} />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
         {tab === 'phases' && (
           <div className="phases-page">
+            {currentPhase && phaseStats && (
+              <div className="current-phase-stats">
+                <h3>{currentPhase.name}</h3>
+                <div className="phase-duration">{phaseStats.days} days ({phaseStats.weeks} weeks)</div>
+                <div className="phase-metrics">
+                  {metrics.map(m => (
+                    <div key={m.key} className="phase-metric">
+                      <span className="pm-label">{m.label}</span>
+                      <span className="pm-current">{phaseStats.stats[m.key].current}</span>
+                      <span className="pm-change">{phaseStats.stats[m.key].change}</span>
+                      <span className="pm-weekly">~{phaseStats.stats[m.key].weeklyAvg}/wk</span>
+                      <span className="pm-thisweek">This wk: {phaseStats.stats[m.key].weekChange}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <button className="add-btn" onClick={addPhase}>+ Add Phase</button>
             <div className="phases-list">
               {phases.map(p => (
@@ -294,6 +379,7 @@ function App() {
                   <div className="phase-info">
                     <span className="phase-name">{p.name}</span>
                     <span className="phase-date">{p.start} → {p.end || 'ongoing'}</span>
+                    {p.goals && <span className="phase-goals">Goals: {p.goals.weight && `W:${p.goals.weight}`} {p.goals.bodyFat && `BF:${p.goals.bodyFat}`} {p.goals.musclePct && `M:${p.goals.musclePct}`}</span>}
                   </div>
                   <div className="phase-actions">
                     {!p.end && <button onClick={() => endPhase(p.id)}>End</button>}
@@ -311,18 +397,9 @@ function App() {
             <h2>GitHub Sync</h2>
             {!github.connected ? (
               <div className="form">
-                <div className="field">
-                  <label>Token</label>
-                  <input type="password" value={github.token} onChange={(e) => setGithub({...github, token: e.target.value})} placeholder="ghp_..." />
-                </div>
-                <div className="field">
-                  <label>Owner</label>
-                  <input value={github.owner} onChange={(e) => setGithub({...github, owner: e.target.value})} placeholder="username" />
-                </div>
-                <div className="field">
-                  <label>Repo</label>
-                  <input value={github.repo} onChange={(e) => setGithub({...github, repo: e.target.value})} placeholder="repo-name" />
-                </div>
+                <div className="field"><label>Token</label><input type="password" value={github.token} onChange={(e) => setGithub({...github, token: e.target.value})} placeholder="ghp_..." /></div>
+                <div className="field"><label>Owner</label><input value={github.owner} onChange={(e) => setGithub({...github, owner: e.target.value})} placeholder="username" /></div>
+                <div className="field"><label>Repo</label><input value={github.repo} onChange={(e) => setGithub({...github, repo: e.target.value})} placeholder="repo-name" /></div>
                 <button className="primary-btn" onClick={connectGithub}>Connect</button>
               </div>
             ) : (
@@ -335,27 +412,18 @@ function App() {
               </div>
             )}
             {syncStatus && <div className="sync-status">{syncStatus}</div>}
+
+            <h2>App</h2>
+            <button className="primary-btn" onClick={() => window.location.reload()}>Reload App</button>
           </div>
         )}
       </main>
 
       <nav className="navbar">
-        <button className={tab === 'log' ? 'active' : ''} onClick={() => setTab('log')}>
-          <span className="nav-icon">📝</span>
-          <span>Log</span>
-        </button>
-        <button className={tab === 'stats' ? 'active' : ''} onClick={() => setTab('stats')}>
-          <span className="nav-icon">📊</span>
-          <span>Stats</span>
-        </button>
-        <button className={tab === 'phases' ? 'active' : ''} onClick={() => setTab('phases')}>
-          <span className="nav-icon">🎯</span>
-          <span>Phases</span>
-        </button>
-        <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>
-          <span className="nav-icon">⚙️</span>
-          <span>Settings</span>
-        </button>
+        <button className={tab === 'log' ? 'active' : ''} onClick={() => setTab('log')}><span className="nav-icon">📝</span><span>Log</span></button>
+        <button className={tab === 'stats' ? 'active' : ''} onClick={() => setTab('stats')}><span className="nav-icon">📊</span><span>Stats</span></button>
+        <button className={tab === 'phases' ? 'active' : ''} onClick={() => setTab('phases')}><span className="nav-icon">🎯</span><span>Phases</span></button>
+        <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}><span className="nav-icon">⚙️</span><span>Settings</span></button>
       </nav>
     </div>
   )
