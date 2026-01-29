@@ -1,14 +1,23 @@
 .app {
   height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
   padding: 16px;
+  border-bottom: 1px solid #313244;
 }
 
 .header h1 {
   margin: 0;
   font-size: 1.3rem;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 60px;
 }
 
 .navbar {
@@ -17,14 +26,103 @@
   left: 0;
   right: 0;
   display: flex;
-  background: #1e1e2e;
+  background: #181825;
+  border-top: 1px solid #313244;
 }
 
 .navbar button {
   flex: 1;
-  padding: 16px;
+  padding: 16px 8px;
   background: none;
   border: none;
-  color: inherit;
-  font-size: 0.8rem;
+  color: #6c7086;
+  font-size: 0.75rem;
+}
+
+.navbar button.active {
+  color: #cdd6f4;
+}
+
+/* Log page */
+.log-page {
+  padding: 16px;
+}
+
+.date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.date-row button {
+  width: 36px;
+  height: 36px;
+  background: #313244;
+  border: none;
+  border-radius: 8px;
+  color: #cdd6f4;
+  font-size: 1rem;
+}
+
+.date-row input {
+  flex: 1;
+  padding: 8px 12px;
+  background: #313244;
+  border: none;
+  border-radius: 8px;
+  color: #cdd6f4;
+  font-size: 0.9rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 0.85rem;
+  color: #a6adc8;
+}
+
+.field input {
+  padding: 12px;
+  background: #313244;
+  border: none;
+  border-radius: 8px;
+  color: #cdd6f4;
+  font-size: 1rem;
+}
+
+.toggles {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.toggle {
+  flex: 1;
+  padding: 12px;
+  background: #313244;
+  border: none;
+  border-radius: 8px;
+  color: #a6adc8;
+  font-size: 0.9rem;
+}
+
+.toggle.active {
+  background: #a6e3a1;
+  color: #1e1e2e;
+}
+
+.page {
+  padding: 16px;
+  color: #6c7086;
 }
