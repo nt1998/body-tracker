@@ -1,0 +1,10 @@
+{
+  "name": "Body Tracker",
+  "short_name": "Body",
+  "start_url": "/body-tracker/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1e1e2e",
+  "theme_color": "#1e1e2e",
+  "icons": []
+}
