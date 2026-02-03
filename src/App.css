@@ -590,3 +590,10 @@ body:has(textarea:focus) .navbar {
   font-size: 0.9rem;
   font-weight: 600;
 }
+
+.version-text {
+  margin-top: 24px;
+  text-align: center;
+  color: #6c7086;
+  font-size: 0.8rem;
+}
