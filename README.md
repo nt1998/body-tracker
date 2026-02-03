@@ -11,6 +11,14 @@ npm run dev
 
 ## Deploy
 
+### Automatic Deployment
+
+The app automatically deploys to GitHub Pages when changes are pushed to the `main` branch via GitHub Actions workflow.
+
+You can also manually trigger a deployment from the Actions tab in GitHub.
+
+### Manual Deployment
+
 ```bash
 npm run deploy
 ```
