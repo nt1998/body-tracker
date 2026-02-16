@@ -435,6 +435,55 @@ function App() {
     ]
   })
 
+  const createMassChartData = () => ({
+    labels: filteredDates.map(d => d.slice(5)),
+    datasets: [
+      {
+        label: 'Fat Mass',
+        data: filteredDates.map(d => {
+          const w = parseFloat(entries[d]?.weight)
+          const bf = parseFloat(entries[d]?.bodyFat)
+          return (!isNaN(w) && !isNaN(bf)) ? +(w * bf / 100).toFixed(2) : null
+        }),
+        borderColor: '#fab387',
+        backgroundColor: '#fab38733',
+        tension: 0.3,
+        spanGaps: true
+      },
+      {
+        label: 'Muscle Mass',
+        data: filteredDates.map(d => {
+          const w = parseFloat(entries[d]?.weight)
+          const mp = parseFloat(entries[d]?.musclePct)
+          return (!isNaN(w) && !isNaN(mp)) ? +(w * mp / 100).toFixed(2) : null
+        }),
+        borderColor: '#a6e3a1',
+        backgroundColor: '#a6e3a133',
+        tension: 0.3,
+        spanGaps: true
+      }
+    ]
+  })
+
+  const createMassChartOptions = () => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: true, labels: { color: '#cdd6f4', usePointStyle: true, pointStyle: 'circle', padding: 12 } },
+      tooltip: {
+        callbacks: {
+          title: (items) => items[0]?.label || '',
+          label: (item) => `${item.dataset.label}: ${item.formattedValue} kg`
+        }
+      }
+    },
+    scales: {
+      x: { ticks: { color: '#6c7086', maxTicksLimit: 6 }, grid: { color: '#313244' } },
+      y: { ticks: { color: '#6c7086', callback: (v) => v + ' kg' }, grid: { color: '#313244' } }
+    }
+  })
+
   const createChartOptions = (metric) => {
     const opts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, annotation: { annotations: {} } }, scales: { x: { ticks: { color: '#6c7086', maxTicksLimit: 6 }, grid: { color: '#313244' } }, y: { ticks: { color: '#6c7086' }, grid: { color: '#313244' } } } }
     if (phase?.goals?.[metric.key]) {
@@ -527,6 +576,15 @@ function App() {
                 </div>
               </div>
             ))}
+            <div className="chart-section">
+              <div className="chart-header">
+                <span className="chart-title" style={{ color: '#cdd6f4' }}>Fat vs Muscle Mass</span>
+                <span className="chart-current">kg</span>
+              </div>
+              <div className="chart-container">
+                <Line data={createMassChartData()} options={createMassChartOptions()} />
+              </div>
+            </div>
           </div>
         )}
 
