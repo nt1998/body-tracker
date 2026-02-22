@@ -484,6 +484,75 @@ function App() {
     }
   })
 
+  const createDualMassChartData = () => {
+    const fatData = filteredDates.map(d => {
+      const w = parseFloat(entries[d]?.weight)
+      const bf = parseFloat(entries[d]?.bodyFat)
+      return (!isNaN(w) && !isNaN(bf)) ? +(w * bf / 100).toFixed(2) : null
+    })
+    const muscleData = filteredDates.map(d => {
+      const w = parseFloat(entries[d]?.weight)
+      const mp = parseFloat(entries[d]?.musclePct)
+      return (!isNaN(w) && !isNaN(mp)) ? +(w * mp / 100).toFixed(2) : null
+    })
+    return {
+      labels: filteredDates.map(d => d.slice(5)),
+      datasets: [
+        { label: 'Fat Mass', data: fatData, borderColor: '#fab387', backgroundColor: '#fab38733', tension: 0.3, spanGaps: true, yAxisID: 'yFat' },
+        { label: 'Muscle Mass', data: muscleData, borderColor: '#a6e3a1', backgroundColor: '#a6e3a133', tension: 0.3, spanGaps: true, yAxisID: 'yMuscle' }
+      ]
+    }
+  }
+
+  const createDualMassChartOptions = () => {
+    const chartData = createDualMassChartData()
+    const fatValues = chartData.datasets[0].data.filter(v => v !== null)
+    const muscleValues = chartData.datasets[1].data.filter(v => v !== null)
+    const fatMin = fatValues.length ? Math.min(...fatValues) : 0
+    const fatMax = fatValues.length ? Math.max(...fatValues) : 1
+    const muscleMin = muscleValues.length ? Math.min(...muscleValues) : 0
+    const muscleMax = muscleValues.length ? Math.max(...muscleValues) : 1
+    const fatRange = fatMax - fatMin
+    const muscleRange = muscleMax - muscleMin
+    const range = Math.max(fatRange, muscleRange, 1)
+    const padding = range * 0.15
+    const fatCenter = (fatMin + fatMax) / 2
+    const muscleCenter = (muscleMin + muscleMax) / 2
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: '#cdd6f4', usePointStyle: true, pointStyle: 'circle', padding: 12 } },
+        tooltip: {
+          callbacks: {
+            title: (items) => items[0]?.label || '',
+            label: (item) => `${item.dataset.label}: ${item.formattedValue} kg`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#6c7086', maxTicksLimit: 6 }, grid: { color: '#313244' } },
+        yFat: {
+          position: 'left',
+          min: fatCenter - range / 2 - padding,
+          max: fatCenter + range / 2 + padding,
+          ticks: { color: '#fab387', callback: (v) => v.toFixed(1) + ' kg' },
+          grid: { color: '#313244' },
+          title: { display: true, text: 'Fat Mass', color: '#fab387' }
+        },
+        yMuscle: {
+          position: 'right',
+          min: muscleCenter - range / 2 - padding,
+          max: muscleCenter + range / 2 + padding,
+          ticks: { color: '#a6e3a1', callback: (v) => v.toFixed(1) + ' kg' },
+          grid: { drawOnChartArea: false },
+          title: { display: true, text: 'Muscle Mass', color: '#a6e3a1' }
+        }
+      }
+    }
+  }
+
   const createChartOptions = (metric) => {
     const opts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, annotation: { annotations: {} } }, scales: { x: { ticks: { color: '#6c7086', maxTicksLimit: 6 }, grid: { color: '#313244' } }, y: { ticks: { color: '#6c7086' }, grid: { color: '#313244' } } } }
     if (phase?.goals?.[metric.key]) {
@@ -565,7 +634,25 @@ function App() {
                 <option value="all">All Time</option>
               </select>
             </div>
-            {metrics.map(m => (
+            <div key={metrics[0].key} className="chart-section">
+              <div className="chart-header">
+                <span className="chart-title" style={{ color: metrics[0].color }}>{metrics[0].label}</span>
+                <span className="chart-current">{entries[Object.keys(entries).sort().pop()]?.[metrics[0].key] || '-'} {metrics[0].unit}</span>
+              </div>
+              <div className="chart-container">
+                <Line data={createChartData(metrics[0])} options={createChartOptions(metrics[0])} />
+              </div>
+            </div>
+            <div className="chart-section">
+              <div className="chart-header">
+                <span className="chart-title" style={{ color: '#cdd6f4' }}>Fat vs Muscle Mass</span>
+                <span className="chart-current">kg</span>
+              </div>
+              <div className="chart-container">
+                <Line data={createDualMassChartData()} options={createDualMassChartOptions()} />
+              </div>
+            </div>
+            {metrics.slice(1).map(m => (
               <div key={m.key} className="chart-section">
                 <div className="chart-header">
                   <span className="chart-title" style={{ color: m.color }}>{m.label}</span>
@@ -576,15 +663,6 @@ function App() {
                 </div>
               </div>
             ))}
-            <div className="chart-section">
-              <div className="chart-header">
-                <span className="chart-title" style={{ color: '#cdd6f4' }}>Fat vs Muscle Mass</span>
-                <span className="chart-current">kg</span>
-              </div>
-              <div className="chart-container">
-                <Line data={createMassChartData()} options={createMassChartOptions()} />
-              </div>
-            </div>
           </div>
         )}
 
