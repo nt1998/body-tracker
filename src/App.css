@@ -75,7 +75,8 @@ body:has(textarea:focus) .tabbar {
   padding: 0;
   gap: 16px;
   position: fixed;
-  bottom: env(safe-area-inset-bottom, 8px);
+  bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom, 8px);
   left: 0;
   right: 0;
   justify-content: center;
