@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -16,68 +16,188 @@ import './App.css'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, annotationPlugin)
 
-const metrics = [
+// ---- Constants ----
+
+const METRICS = [
   { key: 'weight', label: 'Weight', unit: 'kg', color: '#f38ba8', step: 0.1 },
   { key: 'bodyFat', label: 'Body Fat', unit: '%', color: '#fab387', step: 0.1 },
   { key: 'musclePct', label: 'Muscle', unit: '%', color: '#a6e3a1', step: 0.1 },
-  { key: 'visceralFat', label: 'Visceral', unit: '', color: '#89b4fa', step: 1 }
+  { key: 'visceralFat', label: 'Visceral', unit: '', color: '#cba6f7', step: 1 }
 ]
 
+const ORBIT_HABITS = [
+  { key: 'am5',     icon: '🧍', name: '5-min AM', color: '#f9e2af',
+    applies: () => true },
+  { key: 'supsAM',  icon: '☀️', name: 'AM Sups',  color: '#cba6f7',
+    applies: () => true },
+  { key: 'supsPM',  icon: '🌙', name: 'PM Sups',  color: '#b4befe',
+    applies: () => true },
+  { key: 'cardio',  icon: '🫀', name: 'Cardio',   color: '#89dceb',
+    applies: d => d.getDay() !== 6 },
+  { key: 'stretch', icon: '🧘', name: 'Stretch',  color: '#a6e3a1',
+    applies: d => [3,6,0].includes(d.getDay()) },
+  { key: 'calisthenics', icon: '🤸', name: 'Cali', color: '#fab387',
+    applies: d => d.getDay() === 6 },
+]
+
+const DAY_NAMES = ['SUN','MON','TUE','WED','THU','FRI','SAT']
+const MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
+
+// ---- Helpers ----
+
+function dateKey(d) {
+  if (typeof d === 'string') return d
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function parseDate(s) {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function addDays(s, n) {
+  const d = parseDate(s)
+  d.setDate(d.getDate() + n)
+  return dateKey(d)
+}
+
+function formatDateLabel(s) {
+  const d = parseDate(s)
+  return `${DAY_NAMES[d.getDay()]} ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`
+}
+
+function habitApplies(h, dateStr) {
+  const d = new Date(dateStr + 'T12:00:00')
+  return h.applies(d)
+}
+
+function getPhaseColor(name) {
+  const n = (name || '').toLowerCase()
+  if (n.includes('cut')) return '#f38ba8'
+  if (n.includes('bulk')) return '#a6e3a1'
+  return '#f9e2af'
+}
+
+function hexToRgba(hex, a) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16)
+  return `rgba(${r},${g},${b},${a})`
+}
+
+function makeEmptyHabits() {
+  return { am5: false, supsAM: false, supsPM: false, lift: false, cardio: false, stretch: false, calisthenics: false }
+}
+
+function makeEmptyEntry(prev) {
+  return {
+    weight: prev?.weight || '',
+    bodyFat: prev?.bodyFat || '',
+    musclePct: prev?.musclePct || '',
+    visceralFat: prev?.visceralFat || '',
+    habits: makeEmptyHabits()
+  }
+}
+
+function ensureHabits(entry) {
+  if (!entry) return entry
+  if (!entry.habits) {
+    const habits = makeEmptyHabits()
+    if (entry.creatine || entry.vitamins) habits.supsAM = !!(entry.creatine && entry.vitamins)
+    if (entry.cycle) habits.cardio = true
+    return { ...entry, habits }
+  }
+  return entry
+}
+
+// Base chart options: responsive: false, animation: false
+function baseChartOpts(extraScales) {
+  return {
+    responsive: false,
+    animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: { ticks: { color: '#6c7086', font: { size: 9 } }, grid: { color: '#313244' } },
+      ...extraScales
+    },
+    elements: { point: { radius: 0 }, line: { tension: .35, borderWidth: 2 } }
+  }
+}
+
+// ---- SVG Tab Icons ----
+const SunIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/>
+  </svg>
+)
+const ChartIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/>
+  </svg>
+)
+const GearIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+)
+
+// ---- Delta badge component ----
+function DeltaBadge({ val, unit, invertGood }) {
+  const sign = val >= 0 ? '+' : ''
+  let cls = 'neutral'
+  if (invertGood) cls = val < 0 ? 'up' : val > 0 ? 'down' : 'neutral'
+  else cls = val > 0 ? 'up' : val < 0 ? 'down' : 'neutral'
+  return <span className={`delta-badge ${cls}`}>{sign}{val.toFixed(1)}{unit}</span>
+}
+
+
+// ====================================================================
+// APP
+// ====================================================================
 function App() {
-  const [tab, setTab] = useState('log')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  // ---- State ----
+  const [tab, setTab] = useState('today')
+  const [statsTab, setStatsTab] = useState('journey')
+  const [date, setDate] = useState(dateKey(new Date()))
   const [entries, setEntries] = useState({})
-  const [entry, setEntry] = useState({ weight: '', bodyFat: '', musclePct: '', visceralFat: '', creatine: false, vitamins: false, cycle: false })
-  const [hasChanges, setHasChanges] = useState(false)
   const [phases, setPhases] = useState([])
   const [github, setGithub] = useState({ token: '', repo: '', owner: '', connected: false })
   const [syncStatus, setSyncStatus] = useState('')
-  const [statsPhase, setStatsPhase] = useState('current')
-  const [phaseModal, setPhaseModal] = useState(null)
   const [lastSyncTime, setLastSyncTime] = useState(0)
   const [needsSync, setNeedsSync] = useState(false)
   const [commitsToday, setCommitsToday] = useState(null)
+  const [phaseModal, setPhaseModal] = useState(null)
+  const [statsPhaseIdx, setStatsPhaseIdx] = useState(-1) // -1 = current
+  const [ghExpanded, setGhExpanded] = useState(false)
   const syncTimeoutRef = useRef(null)
+  const dateInputRef = useRef(null)
 
-  // Get yesterday's date (handles month boundaries correctly)
-  const getYesterday = (d) => {
-    const [year, month, day] = d.split('-').map(Number)
-    const dt = new Date(year, month - 1, day) // month is 0-indexed in JS
-    dt.setDate(dt.getDate() - 1)
-    const y = dt.getFullYear()
-    const m = String(dt.getMonth() + 1).padStart(2, '0')
-    const dd = String(dt.getDate()).padStart(2, '0')
-    return `${y}-${m}-${dd}`
-  }
+  const todayKey = dateKey(new Date())
+  const isToday = date === todayKey
 
-  const yesterday = getYesterday(date)
-  const yesterdayEntry = entries[yesterday] || {}
-  const todayRecorded = !!entries[date]
-
-  // Lock screen orientation to portrait (or counter-rotate on iOS)
+  // ---- Orientation lock ----
   useEffect(() => {
-    // Try the API first (works on Android PWA)
     if (screen.orientation?.lock) {
       screen.orientation.lock('portrait').catch(() => {})
     }
-
-    // For iOS: counter-rotate content when in landscape
-    const handleOrientationChange = () => {
+    const handle = () => {
       const isLandscape = window.innerWidth > window.innerHeight
       document.body.classList.toggle('landscape-override', isLandscape)
     }
-
-    handleOrientationChange()
-    window.addEventListener('resize', handleOrientationChange)
-    window.addEventListener('orientationchange', handleOrientationChange)
-
+    handle()
+    window.addEventListener('resize', handle)
+    window.addEventListener('orientationchange', handle)
     return () => {
-      window.removeEventListener('resize', handleOrientationChange)
-      window.removeEventListener('orientationchange', handleOrientationChange)
+      window.removeEventListener('resize', handle)
+      window.removeEventListener('orientationchange', handle)
     }
   }, [])
 
-  // Load from localStorage first
+  // ---- Load from localStorage ----
   useEffect(() => {
     const savedEntries = localStorage.getItem('bodytracker_entries')
     if (savedEntries) setEntries(JSON.parse(savedEntries))
@@ -93,33 +213,27 @@ function App() {
     }
   }, [])
 
-  // Debounced sync - sync 5 seconds after last change
+  // ---- Debounced sync ----
   useEffect(() => {
     if (needsSync && github.connected) {
-      // Clear any existing timeout
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current)
-      // Set new timeout to sync after 5 seconds of no changes
-      syncTimeoutRef.current = setTimeout(() => {
-        forceSyncToGithub()
-      }, 5000)
+      syncTimeoutRef.current = setTimeout(() => { forceSyncToGithub() }, 5000)
     }
-    return () => {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current)
-    }
+    return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current) }
   }, [needsSync, github.connected, entries, phases])
 
-  // Sync when app goes to background (more reliable than beforeunload)
+  // Sync when app goes to background
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    const handleVis = () => {
       if (document.visibilityState === 'hidden' && needsSync && github.connected) {
-        // Use sendBeacon or sync immediately
         forceSyncToGithub()
       }
     }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    document.addEventListener('visibilitychange', handleVis)
+    return () => document.removeEventListener('visibilitychange', handleVis)
   }, [needsSync, github.connected])
 
+  // ---- GitHub sync functions (preserved from original) ----
   const autoLoadFromGithub = async (gh) => {
     try {
       const res = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/contents/data.json`, { headers: { Authorization: `token ${gh.token}` } })
@@ -128,25 +242,19 @@ function App() {
         const remoteData = JSON.parse(decodeURIComponent(escape(atob(file.content))))
         const localEntries = JSON.parse(localStorage.getItem('bodytracker_entries') || '{}')
         const localPhases = JSON.parse(localStorage.getItem('bodytracker_phases') || '[]')
-
-        // Check if local has entries that remote doesn't (need to sync up)
         const localDates = Object.keys(localEntries)
         const remoteDates = Object.keys(remoteData.entries || {})
         const localHasMore = localDates.some(d => !remoteDates.includes(d) ||
           JSON.stringify(localEntries[d]) !== JSON.stringify(remoteData.entries[d]))
-
         if (localHasMore) {
-          // Local has data remote doesn't - merge and sync
           const mergedEntries = { ...remoteData.entries, ...localEntries }
           const mergedPhases = localPhases.length > (remoteData.phases?.length || 0) ? localPhases : remoteData.phases
           setEntries(mergedEntries)
           setPhases(mergedPhases || [])
           localStorage.setItem('bodytracker_entries', JSON.stringify(mergedEntries))
           localStorage.setItem('bodytracker_phases', JSON.stringify(mergedPhases || []))
-          // Sync merged data to remote
           await syncToGithub(mergedEntries, mergedPhases || [], true)
         } else {
-          // Remote is up to date or has more - use remote
           setEntries(remoteData.entries || {})
           localStorage.setItem('bodytracker_entries', JSON.stringify(remoteData.entries || {}))
           if (remoteData.phases) {
@@ -154,124 +262,20 @@ function App() {
             localStorage.setItem('bodytracker_phases', JSON.stringify(remoteData.phases))
           }
         }
-
         setLastSyncTime(Date.now())
         localStorage.setItem('bodytracker_lastsync', Date.now().toString())
       }
-    } catch (e) {
-      console.error('Auto-load failed:', e)
-    }
+    } catch (e) { console.error('Auto-load failed:', e) }
   }
-
-  // Force immediate sync to GitHub
-  const forceSyncToGithub = async () => {
-    if (!github.connected) return
-    const currentEntries = JSON.parse(localStorage.getItem('bodytracker_entries') || '{}')
-    const currentPhases = JSON.parse(localStorage.getItem('bodytracker_phases') || '[]')
-    await syncToGithub(currentEntries, currentPhases, true)
-    setNeedsSync(false)
-    // Refresh commit count after sync
-    fetchCommitsToday()
-  }
-
-  // Fetch today's commit count from GitHub (count from Link header)
-  const fetchCommitsToday = async () => {
-    if (!github.connected || !github.token || !github.repo || !github.owner) return
-    try {
-      const today = new Date().toISOString().split('T')[0]
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
-      // Use per_page=1 and check Link header for total count
-      const res = await fetch(
-        `https://api.github.com/repos/${github.owner}/${github.repo}/commits?since=${today}T00:00:00Z&until=${tomorrow}T00:00:00Z&per_page=1`,
-        { headers: { Authorization: `token ${github.token}` } }
-      )
-      if (res.ok) {
-        const link = res.headers.get('Link')
-        if (link) {
-          // Parse last page number from Link header
-          const match = link.match(/&page=(\d+)>; rel="last"/)
-          if (match) {
-            setCommitsToday(parseInt(match[1]))
-            return
-          }
-        }
-        // If no Link header, count directly (less than 1 page)
-        const commits = await res.json()
-        setCommitsToday(commits.length)
-      }
-    } catch {}
-  }
-
-  // Load entry for date - use yesterday's values if no entry
-  useEffect(() => {
-    if (entries[date]) {
-      setEntry(entries[date])
-      setHasChanges(false)
-    } else {
-      const yest = entries[getYesterday(date)] || {}
-      setEntry({
-        weight: yest.weight || '',
-        bodyFat: yest.bodyFat || '',
-        musclePct: yest.musclePct || '',
-        visceralFat: yest.visceralFat || '',
-        creatine: false,
-        vitamins: false,
-        cycle: false
-      })
-      setHasChanges(false)
-    }
-  }, [date, entries])
-
-  const saveAll = (newEntries, newPhases, forceSync = false) => {
-    localStorage.setItem('bodytracker_entries', JSON.stringify(newEntries))
-    localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
-    setNeedsSync(true)
-    if (forceSync && github.connected) {
-      syncToGithub(newEntries, newPhases, true)
-    }
-  }
-
-  const updateEntry = (field, value) => {
-    const newEntry = { ...entry, [field]: value }
-    setEntry(newEntry)
-    setHasChanges(true)
-    // Save immediately
-    const newEntries = { ...entries, [date]: newEntry }
-    setEntries(newEntries)
-    saveAll(newEntries, phases)
-  }
-
-  const adjustValue = (field, delta) => {
-    const metric = metrics.find(m => m.key === field)
-    const step = metric?.step || 0.1
-    const current = parseFloat(entry[field]) || parseFloat(yesterdayEntry[field]) || 0
-    const newVal = (current + delta * step).toFixed(step === 1 ? 0 : 1)
-    updateEntry(field, newVal)
-  }
-
-  const today = new Date().toISOString().split('T')[0]
-  const isToday = date === today
-
-  const changeDate = (days) => {
-    const d = new Date(date)
-    d.setDate(d.getDate() + days)
-    const newDate = d.toISOString().split('T')[0]
-    // Don't allow future dates
-    if (newDate > today) return
-    setDate(newDate)
-  }
-
 
   const syncToGithub = async (data, phasesData, force = false) => {
     if (!github.token || !github.repo || !github.owner) return
-    if (!force) return // Only sync when forced
-
+    if (!force) return
     try {
       setSyncStatus('Checking...')
       const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/data.json`
       let sha = ''
       let remoteData = null
-
       try {
         const getRes = await fetch(apiUrl, { headers: { Authorization: `token ${github.token}` } })
         if (getRes.ok) {
@@ -279,20 +283,15 @@ function App() {
           sha = file.sha
           remoteData = JSON.parse(decodeURIComponent(escape(atob(file.content))))
         }
-      } catch {}
-
-      // Compare local vs remote - only sync if different
+      } catch { /* ignore */ }
       const localPayload = JSON.stringify({ entries: data, phases: phasesData })
       const remotePayload = remoteData ? JSON.stringify({ entries: remoteData.entries, phases: remoteData.phases }) : null
-
       if (localPayload === remotePayload) {
-        // No changes, skip commit
         setSyncStatus('No changes')
         setTimeout(() => setSyncStatus(''), 1500)
         setNeedsSync(false)
         return
       }
-
       setSyncStatus('Syncing...')
       const content = btoa(unescape(encodeURIComponent(JSON.stringify({ entries: data, phases: phasesData }, null, 2))))
       await fetch(apiUrl, {
@@ -308,6 +307,36 @@ function App() {
     } catch { setSyncStatus('Sync failed'); setTimeout(() => setSyncStatus(''), 3000) }
   }
 
+  const forceSyncToGithub = async () => {
+    if (!github.connected) return
+    const currentEntries = JSON.parse(localStorage.getItem('bodytracker_entries') || '{}')
+    const currentPhases = JSON.parse(localStorage.getItem('bodytracker_phases') || '[]')
+    await syncToGithub(currentEntries, currentPhases, true)
+    setNeedsSync(false)
+    fetchCommitsToday()
+  }
+
+  const fetchCommitsToday = async () => {
+    if (!github.connected || !github.token || !github.repo || !github.owner) return
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+      const res = await fetch(
+        `https://api.github.com/repos/${github.owner}/${github.repo}/commits?since=${today}T00:00:00Z&until=${tomorrow}T00:00:00Z&per_page=1`,
+        { headers: { Authorization: `token ${github.token}` } }
+      )
+      if (res.ok) {
+        const link = res.headers.get('Link')
+        if (link) {
+          const match = link.match(/&page=(\d+)>; rel="last"/)
+          if (match) { setCommitsToday(parseInt(match[1])); return }
+        }
+        const commits = await res.json()
+        setCommitsToday(commits.length)
+      }
+    } catch { /* ignore */ }
+  }
+
   const connectGithub = () => {
     const newGithub = { ...github, connected: true }
     setGithub(newGithub)
@@ -319,43 +348,55 @@ function App() {
     localStorage.setItem('bodytracker_github', JSON.stringify({ token: '', repo: '', owner: '', connected: false }))
   }
 
-  // Calculate streaks for creatine and vitamins
-  const calcStreak = (field) => {
-    const sortedDates = Object.keys(entries).sort().reverse()
-    let streak = 0
-    let weekStart = null
-    let missedInWeek = 0
+  // ---- Data management ----
+  const saveAll = useCallback((newEntries, newPhases) => {
+    localStorage.setItem('bodytracker_entries', JSON.stringify(newEntries))
+    localStorage.setItem('bodytracker_phases', JSON.stringify(newPhases))
+    setNeedsSync(true)
+  }, [])
 
-    for (let i = 0; i < sortedDates.length; i++) {
-      const d = sortedDates[i]
-      const dt = new Date(d)
-      const weekNum = Math.floor(dt.getTime() / (7 * 24 * 60 * 60 * 1000))
+  const currentEntry = useMemo(() => {
+    const e = entries[date]
+    if (e) return ensureHabits(e)
+    // Pre-fill from yesterday
+    const yest = entries[addDays(date, -1)]
+    return makeEmptyEntry(yest)
+  }, [entries, date])
 
-      if (weekStart === null) weekStart = weekNum
-      if (weekNum !== weekStart) {
-        // New week - check if missed more than 2 days
-        if (missedInWeek > 2) break
-        weekStart = weekNum
-        missedInWeek = 0
-      }
+  const entryRecorded = !!entries[date]
 
-      if (entries[d]?.[field]) {
-        streak++
-      } else {
-        missedInWeek++
-        if (missedInWeek > 2) break
-      }
-    }
-    return streak
-  }
+  const updateEntry = useCallback((field, value) => {
+    const existing = entries[date] ? ensureHabits(entries[date]) : makeEmptyEntry(entries[addDays(date, -1)])
+    const newEntry = { ...existing, [field]: value }
+    const newEntries = { ...entries, [date]: newEntry }
+    setEntries(newEntries)
+    saveAll(newEntries, phases)
+  }, [entries, date, phases, saveAll])
 
-  const creatineStreak = useMemo(() => calcStreak('creatine'), [entries])
-  const vitaminsStreak = useMemo(() => calcStreak('vitamins'), [entries])
-  const cycleStreak = useMemo(() => calcStreak('cycle'), [entries])
+  const updateHabit = useCallback((habitKey, value) => {
+    const existing = entries[date] ? ensureHabits(entries[date]) : makeEmptyEntry(entries[addDays(date, -1)])
+    const newEntry = { ...existing, habits: { ...existing.habits, [habitKey]: value } }
+    const newEntries = { ...entries, [date]: newEntry }
+    setEntries(newEntries)
+    saveAll(newEntries, phases)
+  }, [entries, date, phases, saveAll])
 
-  // Phases
-  const getCurrentPhase = () => phases.find(p => !p.end)
+  const adjustValue = useCallback((field, delta) => {
+    const metric = METRICS.find(m => m.key === field)
+    const step = metric?.step || 0.1
+    const existing = entries[date] ? ensureHabits(entries[date]) : makeEmptyEntry(entries[addDays(date, -1)])
+    const current = parseFloat(existing[field]) || 0
+    const newVal = (current + delta * step).toFixed(step === 1 ? 0 : 1)
+    updateEntry(field, newVal)
+  }, [entries, date, updateEntry])
 
+  const changeDate = useCallback((days) => {
+    const newDate = addDays(date, days)
+    if (newDate > todayKey) return
+    setDate(newDate)
+  }, [date, todayKey])
+
+  // ---- Phase management ----
   const openAddPhase = () => {
     setPhaseModal({ name: '', goals: { weight: '', bodyFat: '', musclePct: '' } })
   }
@@ -380,407 +421,306 @@ function App() {
     saveAll(entries, newPhases)
   }
 
-  // Stats
-  const getPhaseForStats = () => {
-    if (statsPhase === 'all') return null
-    if (statsPhase === 'current') return getCurrentPhase()
-    return phases.find(p => p.id === parseInt(statsPhase))
-  }
+  // ---- Computed: Orbit ----
+  const { manualApplicable, autoApplicable, naHabits } = useMemo(() => {
+    const manual = ORBIT_HABITS.filter(h => habitApplies(h, date) && !h.auto)
+    const auto = ORBIT_HABITS.filter(h => habitApplies(h, date) && h.auto)
+    const na = ORBIT_HABITS.filter(h => !habitApplies(h, date))
+    return { manualApplicable: manual, autoApplicable: auto, naHabits: na }
+  }, [date])
 
-  const getFilteredDates = (phase) => {
-    let dates = Object.keys(entries).sort()
-    if (phase) dates = dates.filter(d => d >= phase.start && (!phase.end || d <= phase.end))
-    return dates
-  }
+  const orbitFraction = useMemo(() => {
+    const all = ORBIT_HABITS.filter(h => habitApplies(h, date))
+    const done = all.filter(h => currentEntry.habits?.[h.key]).length
+    return { done, total: all.length }
+  }, [date, currentEntry])
 
-  const calc5DayAvg = (dates, field) => {
-    return dates.map((d, i) => {
-      const window = dates.slice(Math.max(0, i - 4), i + 1)
-      const values = window.map(dt => parseFloat(entries[dt]?.[field])).filter(v => !isNaN(v))
-      return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null
-    })
-  }
+  // ---- Computed: sorted dates ----
+  const sortedDates = useMemo(() => Object.keys(entries).sort(), [entries])
 
-  const getPhaseStats = (phase) => {
-    if (!phase) return null
-    const dates = getFilteredDates(phase)
-    if (dates.length === 0) return null
-    const startDate = new Date(phase.start)
-    const today = new Date()
-    const days = Math.floor((today - startDate) / (1000 * 60 * 60 * 24))
-    const weeks = days / 7
-    const stats = {}
-    metrics.forEach(m => {
-      const values = dates.map(d => parseFloat(entries[d]?.[m.key])).filter(v => !isNaN(v))
-      if (values.length < 1) { stats[m.key] = { start: '-', current: '-', change: '-', weeklyAvg: '-', weekChange: '-' }; return }
-      const start = values[0], current = values[values.length - 1], change = current - start
-      const weeklyAvg = weeks > 0 ? change / weeks : 0
-      const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7)
-      const recentDates = dates.filter(d => d >= weekAgo.toISOString().split('T')[0])
-      const recentValues = recentDates.map(d => parseFloat(entries[d]?.[m.key])).filter(v => !isNaN(v))
-      const weekChange = recentValues.length >= 2 ? recentValues[recentValues.length - 1] - recentValues[0] : 0
-      stats[m.key] = { start: start.toFixed(1), current: current.toFixed(1), change: (change >= 0 ? '+' : '') + change.toFixed(1), weeklyAvg: (weeklyAvg >= 0 ? '+' : '') + weeklyAvg.toFixed(2), weekChange: (weekChange >= 0 ? '+' : '') + weekChange.toFixed(1) }
-    })
-    return { days, weeks: weeks.toFixed(1), stats }
-  }
-
-  const phase = getPhaseForStats()
-  const filteredDates = getFilteredDates(phase)
-
-  const createChartData = (metric) => ({
-    labels: filteredDates.map(d => d.slice(5)),
-    datasets: [
-      { label: metric.label, data: filteredDates.map(d => parseFloat(entries[d]?.[metric.key]) || null), borderColor: metric.color, backgroundColor: metric.color + '33', tension: 0.3, spanGaps: true },
-      { label: '5-Day Avg', data: calc5DayAvg(filteredDates, metric.key), borderColor: '#6c7086', borderDash: [5, 5], tension: 0.3, pointRadius: 0, spanGaps: true }
-    ]
-  })
-
-  const createMassChartData = () => ({
-    labels: filteredDates.map(d => d.slice(5)),
-    datasets: [
-      {
-        label: 'Fat Mass',
-        data: filteredDates.map(d => {
-          const w = parseFloat(entries[d]?.weight)
-          const bf = parseFloat(entries[d]?.bodyFat)
-          return (!isNaN(w) && !isNaN(bf)) ? +(w * bf / 100).toFixed(2) : null
-        }),
-        borderColor: '#fab387',
-        backgroundColor: '#fab38733',
-        tension: 0.3,
-        spanGaps: true
-      },
-      {
-        label: 'Muscle Mass',
-        data: filteredDates.map(d => {
-          const w = parseFloat(entries[d]?.weight)
-          const mp = parseFloat(entries[d]?.musclePct)
-          return (!isNaN(w) && !isNaN(mp)) ? +(w * mp / 100).toFixed(2) : null
-        }),
-        borderColor: '#a6e3a1',
-        backgroundColor: '#a6e3a133',
-        tension: 0.3,
-        spanGaps: true
-      }
-    ]
-  })
-
-  const createMassChartOptions = () => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    plugins: {
-      legend: { display: true, labels: { color: '#cdd6f4', usePointStyle: true, pointStyle: 'circle', padding: 12 } },
-      tooltip: {
-        callbacks: {
-          title: (items) => items[0]?.label || '',
-          label: (item) => `${item.dataset.label}: ${item.formattedValue} kg`
+  // ---- Computed: Trails (21-day) ----
+  const trailsData = useMemo(() => {
+    return ORBIT_HABITS.map(h => {
+      const dots = []
+      for (let i = 20; i >= 0; i--) {
+        const d = addDays(todayKey, -i)
+        const isTodayDot = i === 0
+        const appl = habitApplies(h, d)
+        const ent = entries[d] ? ensureHabits(entries[d]) : null
+        const val = ent ? ent.habits?.[h.key] : null
+        let cls = 'dot'
+        if (!appl || val === null || val === undefined) cls += ' na'
+        else {
+          if (val) cls += ' done'
+          else cls += ' miss'
+          if (isTodayDot) cls += ' today-dot ' + (val ? 'done' : 'pending')
         }
+        dots.push({ cls, color: h.color })
       }
-    },
-    scales: {
-      x: { ticks: { color: '#6c7086', maxTicksLimit: 6 }, grid: { color: '#313244' } },
-      y: { ticks: { color: '#6c7086', callback: (v) => v + ' kg' }, grid: { color: '#313244' } }
-    }
-  })
-
-  const createDualMassChartData = () => {
-    const fatData = filteredDates.map(d => {
-      const w = parseFloat(entries[d]?.weight)
-      const bf = parseFloat(entries[d]?.bodyFat)
-      return (!isNaN(w) && !isNaN(bf)) ? +(w * bf / 100).toFixed(2) : null
+      return { ...h, dots }
     })
-    const muscleData = filteredDates.map(d => {
-      const w = parseFloat(entries[d]?.weight)
-      const mp = parseFloat(entries[d]?.musclePct)
-      return (!isNaN(w) && !isNaN(mp)) ? +(w * mp / 100).toFixed(2) : null
+  }, [entries, todayKey])
+
+  // ---- Computed: habit compliance (all time) ----
+  const habitScores = useMemo(() => {
+    return ORBIT_HABITS.map(h => {
+      let done = 0, total = 0
+      sortedDates.forEach(k => {
+        const e = ensureHabits(entries[k])
+        const v = e.habits?.[h.key]
+        if (v !== null && v !== undefined) { total++; if (v) done++ }
+      })
+      const pct = total > 0 ? done / total : 0
+      return { ...h, pct, done, total }
     })
-    return {
-      labels: filteredDates.map(d => d.slice(5)),
-      datasets: [
-        { label: 'Fat Mass', data: fatData, borderColor: '#fab387', backgroundColor: '#fab38733', tension: 0.3, spanGaps: true, yAxisID: 'yFat' },
-        { label: 'Muscle Mass', data: muscleData, borderColor: '#a6e3a1', backgroundColor: '#a6e3a133', tension: 0.3, spanGaps: true, yAxisID: 'yMuscle' }
-      ]
-    }
-  }
+  }, [entries, sortedDates])
 
-  const createDualMassChartOptions = () => {
-    const chartData = createDualMassChartData()
-    const fatValues = chartData.datasets[0].data.filter(v => v !== null)
-    const muscleValues = chartData.datasets[1].data.filter(v => v !== null)
-    const fatMin = fatValues.length ? Math.min(...fatValues) : 0
-    const fatMax = fatValues.length ? Math.max(...fatValues) : 1
-    const muscleMin = muscleValues.length ? Math.min(...muscleValues) : 0
-    const muscleMax = muscleValues.length ? Math.max(...muscleValues) : 1
-    const fatRange = fatMax - fatMin
-    const muscleRange = muscleMax - muscleMin
-    const range = Math.max(fatRange, muscleRange, 1)
-    const padding = range * 0.15
-    const fatCenter = (fatMin + fatMax) / 2
-    const muscleCenter = (muscleMin + muscleMax) / 2
-    return {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: true, labels: { color: '#cdd6f4', usePointStyle: true, pointStyle: 'circle', padding: 12 } },
-        tooltip: {
-          callbacks: {
-            title: (items) => items[0]?.label || '',
-            label: (item) => `${item.dataset.label}: ${item.formattedValue} kg`
-          }
-        }
-      },
-      scales: {
-        x: { ticks: { color: '#6c7086', maxTicksLimit: 6 }, grid: { color: '#313244' } },
-        yFat: {
-          position: 'left',
-          min: fatCenter - range / 2 - padding,
-          max: fatCenter + range / 2 + padding,
-          ticks: { color: '#fab387', callback: (v) => v.toFixed(1) + ' kg' },
-          grid: { color: '#313244' },
-          title: { display: true, text: 'Fat Mass', color: '#fab387' }
-        },
-        yMuscle: {
-          position: 'right',
-          min: muscleCenter - range / 2 - padding,
-          max: muscleCenter + range / 2 + padding,
-          ticks: { color: '#a6e3a1', callback: (v) => v.toFixed(1) + ' kg' },
-          grid: { drawOnChartArea: false },
-          title: { display: true, text: 'Muscle Mass', color: '#a6e3a1' }
-        }
-      }
-    }
-  }
-
-  const createChartOptions = (metric) => {
-    const opts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, annotation: { annotations: {} } }, scales: { x: { ticks: { color: '#6c7086', maxTicksLimit: 6 }, grid: { color: '#313244' } }, y: { ticks: { color: '#6c7086' }, grid: { color: '#313244' } } } }
-    if (phase?.goals?.[metric.key]) {
-      const goalVal = parseFloat(phase.goals[metric.key])
-      if (!isNaN(goalVal)) opts.plugins.annotation.annotations.goalLine = { type: 'line', yMin: goalVal, yMax: goalVal, borderColor: '#a6e3a1', borderWidth: 2, borderDash: [10, 5] }
-    }
-    if (phase && filteredDates.length > 0) {
-      const startVal = parseFloat(entries[filteredDates[0]]?.[metric.key])
-      if (!isNaN(startVal)) opts.plugins.annotation.annotations.startLine = { type: 'line', yMin: startVal, yMax: startVal, borderColor: '#f38ba8', borderWidth: 1, borderDash: [5, 5] }
-    }
-    return opts
-  }
-
-  const currentPhase = getCurrentPhase()
-  const phaseStats = getPhaseStats(currentPhase)
-
+  // ---- Display value helper ----
   const getDisplayValue = (field) => {
-    if (entry[field]) return entry[field]
-    if (!todayRecorded && yesterdayEntry[field]) return yesterdayEntry[field]
+    if (entries[date]?.[field]) return entries[date][field]
+    if (!entryRecorded) {
+      const yest = entries[addDays(date, -1)]
+      if (yest?.[field]) return yest[field]
+    }
     return ''
   }
+  const isYesterdayValue = (field) => !entryRecorded && !entries[date]?.[field] && entries[addDays(date, -1)]?.[field]
 
-  const isYesterdayValue = (field) => !todayRecorded && !entry[field] && yesterdayEntry[field]
 
+  // =====================================================
+  // RENDER
+  // =====================================================
   return (
     <div className="app">
-      <header className="header"><h1>Body Tracker</h1></header>
+      <main className="content" key={tab}>
 
-      <main className="content">
-        {tab === 'log' && (
-          <div className="log-page">
-            <div className="date-row">
-              <button onClick={() => changeDate(-1)}>&lt;</button>
-              <input type="date" value={date} max={today} onChange={(e) => e.target.value <= today && setDate(e.target.value)} />
-              <button onClick={() => changeDate(1)} disabled={isToday} className={isToday ? 'disabled' : ''}>&gt;</button>
+        {/* ==================== TODAY TAB ==================== */}
+        {tab === 'today' && (
+          <>
+            {/* Date picker */}
+            <div className="log-header">
+              <button onClick={() => changeDate(-1)}>{'\u2039'}</button>
+              <span className="log-date" onClick={() => dateInputRef.current?.showPicker()}>
+                {formatDateLabel(date)}
+              </span>
+              <input
+                type="date"
+                ref={dateInputRef}
+                value={date}
+                max={todayKey}
+                onChange={(e) => { if (e.target.value && e.target.value <= todayKey) setDate(e.target.value) }}
+              />
+              <button onClick={() => changeDate(1)} disabled={isToday}>{'\u203A'}</button>
             </div>
 
-            {metrics.map(m => (
-              <div key={m.key} className="metric-row">
-                <span className="metric-label">{m.label}</span>
-                <div className="metric-input">
-                  <button className="adj-btn" onClick={() => adjustValue(m.key, -1)}>-</button>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={`metric-value ${isYesterdayValue(m.key) ? 'yesterday' : ''}`}
-                    value={getDisplayValue(m.key)}
-                    placeholder="-"
-                    onChange={(e) => updateEntry(m.key, e.target.value)}
-                  />
-                  <span className="metric-unit">{m.unit}</span>
-                  <button className="adj-btn" onClick={() => adjustValue(m.key, 1)}>+</button>
-                </div>
-              </div>
-            ))}
-
-            <div className="toggles">
-              <button className={entry.creatine ? 'toggle active' : 'toggle'} onClick={() => updateEntry('creatine', !entry.creatine)}>
-                Creatine {creatineStreak > 0 && <span className="streak">{creatineStreak}d</span>}
-              </button>
-              <button className={entry.vitamins ? 'toggle active' : 'toggle'} onClick={() => updateEntry('vitamins', !entry.vitamins)}>
-                Vitamins {vitaminsStreak > 0 && <span className="streak">{vitaminsStreak}d</span>}
-              </button>
-              <button className={entry.cycle ? 'toggle active' : 'toggle'} onClick={() => updateEntry('cycle', !entry.cycle)}>
-                Cycle {cycleStreak > 0 && <span className="streak">{cycleStreak}d</span>}
-              </button>
-            </div>
-
-            {syncStatus && <div className="sync-status">{syncStatus}</div>}
-          </div>
-        )}
-
-        {tab === 'stats' && (
-          <div className="stats-page">
-            <div className="filters">
-              <select value={statsPhase} onChange={(e) => setStatsPhase(e.target.value)}>
-                {getCurrentPhase() && <option value="current">{getCurrentPhase().name} (current)</option>}
-                {phases.filter(p => p.end).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                <option value="all">All Time</option>
-              </select>
-            </div>
-            <div key={metrics[0].key} className="chart-section">
-              <div className="chart-header">
-                <span className="chart-title" style={{ color: metrics[0].color }}>{metrics[0].label}</span>
-                <span className="chart-current">{entries[Object.keys(entries).sort().pop()]?.[metrics[0].key] || '-'} {metrics[0].unit}</span>
-              </div>
-              <div className="chart-container">
-                <Line data={createChartData(metrics[0])} options={createChartOptions(metrics[0])} />
-              </div>
-            </div>
-            <div className="chart-section">
-              <div className="chart-header">
-                <span className="chart-title" style={{ color: '#cdd6f4' }}>Fat vs Muscle Mass</span>
-                <span className="chart-current">kg</span>
-              </div>
-              <div className="chart-container">
-                <Line data={createDualMassChartData()} options={createDualMassChartOptions()} />
-              </div>
-            </div>
-            {metrics.slice(1).map(m => (
-              <div key={m.key} className="chart-section">
-                <div className="chart-header">
-                  <span className="chart-title" style={{ color: m.color }}>{m.label}</span>
-                  <span className="chart-current">{entries[Object.keys(entries).sort().pop()]?.[m.key] || '-'} {m.unit}</span>
-                </div>
-                <div className="chart-container">
-                  <Line data={createChartData(m)} options={createChartOptions(m)} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === 'phases' && (
-          <div className="phases-page">
-            {currentPhase && phaseStats && (
-              <div className="current-phase-stats">
-                <h3>{currentPhase.name}</h3>
-                <div className="phase-duration">{phaseStats.days} days ({phaseStats.weeks} weeks)</div>
-                <div className="phase-metrics">
-                  {metrics.map(m => (
-                    <div key={m.key} className="phase-metric">
-                      <span className="pm-label">{m.label}</span>
-                      <span className="pm-current">{phaseStats.stats[m.key].current}</span>
-                      <span className="pm-change">{phaseStats.stats[m.key].change}</span>
-                      <span className="pm-weekly">~{phaseStats.stats[m.key].weeklyAvg}/wk</span>
-                      <span className="pm-thisweek">This wk: {phaseStats.stats[m.key].weekChange}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <button className="add-btn" onClick={openAddPhase}>+ Add Phase</button>
-            <div className="phases-list">
-              {phases.map(p => (
-                <div key={p.id} className="phase-item">
-                  <div className="phase-info">
-                    <span className="phase-name">{p.name}</span>
-                    <span className="phase-date">{p.start} → {p.end || 'ongoing'}</span>
-                    {p.goals && <span className="phase-goals">Goals: {p.goals.weight && `W:${p.goals.weight}`} {p.goals.bodyFat && `BF:${p.goals.bodyFat}`} {p.goals.musclePct && `M:${p.goals.musclePct}`}</span>}
+            {/* Orbit */}
+            <div className="orbit-wrap">
+              <div className="orbit">
+                <div className="orbit-ring"></div>
+                <div className="orbit-ring r2"></div>
+                <div className="orbit-center">
+                  <div className="frac">
+                    <span>{orbitFraction.done}</span>
+                    <span className="denom">/<span>{orbitFraction.total}</span></span>
                   </div>
-                  <div className="phase-actions">
-                    {!p.end && <button onClick={() => endPhase(p.id)}>End</button>}
-                    <button className="del" onClick={() => deletePhase(p.id)}>×</button>
+                  <div className="lbl">in orbit</div>
+                </div>
+
+                {/* Manual planets around the ring */}
+                {manualApplicable.map((h, i) => {
+                  const N = manualApplicable.length
+                  const angle = -Math.PI/2 + (i / N) * Math.PI * 2
+                  const orbitR = 110
+                  const x = 140 + Math.cos(angle) * orbitR
+                  const y = 140 + Math.sin(angle) * orbitR
+                  const isDone = currentEntry.habits?.[h.key]
+                  return (
+                    <div
+                      key={h.key}
+                      className={`planet ${isDone ? 'done' : 'pending'}`}
+                      style={{ '--c': h.color, left: x + 'px', top: y + 'px' }}
+                      onClick={() => updateHabit(h.key, !isDone)}
+                    >
+                      <div className="p-icon">{h.icon}</div>
+                      <div className="p-name">{h.name}</div>
+                    </div>
+                  )
+                })}
+
+              </div>
+            </div>
+
+            {/* Measurements */}
+            <div className="log-section-title">Measurements</div>
+            <div className="log-metrics">
+              {METRICS.map(m => (
+                <div key={m.key} className="log-metric">
+                  <div className="lm-label">{m.label} {m.unit && `(${m.unit})`}</div>
+                  <div className="lm-row">
+                    <button className="lm-btn" onClick={() => adjustValue(m.key, -1)}>-</button>
+                    <div className={`lm-val ${isYesterdayValue(m.key) ? 'yesterday' : ''}`} style={{ color: m.color }}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={getDisplayValue(m.key)}
+                        placeholder="--"
+                        style={{ color: isYesterdayValue(m.key) ? '#6c7086' : m.color }}
+                        onChange={(e) => updateEntry(m.key, e.target.value)}
+                      />
+                    </div>
+                    <button className="lm-btn" onClick={() => adjustValue(m.key, 1)}>+</button>
                   </div>
                 </div>
               ))}
-              {phases.length === 0 && <p className="empty">No phases yet</p>}
             </div>
-          </div>
+
+
+            {syncStatus && <div className="sync-status">{syncStatus}</div>}
+          </>
         )}
 
-        {tab === 'settings' && (
-          <div className="settings-page">
-            <h2>GitHub Sync</h2>
-            {!github.connected ? (
-              <div className="form">
-                <div className="field"><label>Token</label><input type="password" value={github.token} onChange={(e) => setGithub({...github, token: e.target.value})} placeholder="ghp_..." /></div>
-                <div className="field"><label>Owner</label><input value={github.owner} onChange={(e) => setGithub({...github, owner: e.target.value})} placeholder="username" /></div>
-                <div className="field"><label>Repo</label><input value={github.repo} onChange={(e) => setGithub({...github, repo: e.target.value})} placeholder="repo-name" /></div>
-                <button className="primary-btn" onClick={connectGithub}>Connect</button>
-              </div>
-            ) : (
-              <div className="connected-info">
-                <p>Connected to {github.owner}/{github.repo}</p>
-                <div className="sync-stats">
-                  {lastSyncTime > 0 && (
-                    <p className="sync-note">Last sync: {new Date(lastSyncTime).toLocaleTimeString()}</p>
-                  )}
-                  <p className="sync-note">Commits today: {commitsToday !== null ? commitsToday : '...'}</p>
-                </div>
-                <button className="primary-btn" style={{marginTop: '12px'}} onClick={forceSyncToGithub} disabled={!needsSync}>
-                  {needsSync ? 'Sync Now' : 'Up to date'}
+        {/* ==================== STATS TAB ==================== */}
+        {tab === 'stats' && (
+          <>
+            <div className="stats-nav">
+              {['journey', 'phase', 'habits'].map(t => (
+                <button key={t} className={statsTab === t ? 'active' : ''} onClick={() => setStatsTab(t)}>
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
                 </button>
-                <button className="danger-btn" style={{marginTop: '8px'}} onClick={() => {
-                  if (confirm('Disconnect from GitHub? Local data will be preserved.')) {
-                    disconnectGithub()
-                  }
-                }}>Disconnect</button>
+              ))}
+            </div>
+
+            {statsTab === 'journey' && <JourneyPanel entries={entries} phases={phases} sortedDates={sortedDates} />}
+            {statsTab === 'phase' && <PhasePanel entries={entries} phases={phases} sortedDates={sortedDates} statsPhaseIdx={statsPhaseIdx} setStatsPhaseIdx={setStatsPhaseIdx} />}
+            {statsTab === 'habits' && <HabitsPanel trailsData={trailsData} habitScores={habitScores} entries={entries} phases={phases} sortedDates={sortedDates} />}
+          </>
+        )}
+
+        {/* ==================== SETTINGS TAB ==================== */}
+        {tab === 'settings' && (
+          <>
+            <div className="settings-h">Settings</div>
+
+            <div className="settings-section">Phases</div>
+            {phases.map(p => {
+              const isCurrent = !p.end
+              return (
+                <div key={p.id} className={`phase-card ${isCurrent ? 'current' : ''}`}>
+                  <div className="pc-name">{p.name}</div>
+                  <div className="pc-dates">{p.start} {'\u2192'} {p.end || 'ongoing'}</div>
+                  {p.goals && <div className="pc-goals">Goal: {p.goals.weight && `${p.goals.weight}kg`} {p.goals.bodyFat && `${p.goals.bodyFat}% BF`} {p.goals.musclePct && `${p.goals.musclePct}% Mu`}</div>}
+                  {isCurrent && <div className="pc-badge">Current</div>}
+                  <div className="pc-actions">
+                    {isCurrent && <button onClick={() => endPhase(p.id)}>End</button>}
+                    <button className="del" onClick={() => deletePhase(p.id)}>{'\u00D7'}</button>
+                  </div>
+                </div>
+              )
+            })}
+            {phases.length === 0 && <div style={{ color: '#45475a', fontSize: 12, padding: '8px 0' }}>No phases yet</div>}
+            <button className="add-phase-btn" onClick={openAddPhase}>+ Add Phase</button>
+
+            {/* Current phase summary */}
+            <SettingsPhaseSummary entries={entries} phases={phases} sortedDates={sortedDates} />
+
+            <div className="settings-section">Data</div>
+
+            {/* GitHub Sync */}
+            <div className="settings-row" onClick={() => setGhExpanded(!ghExpanded)}>
+              <div className="sr-left">
+                <span className="sr-icon">{'\u{E0A0}'}</span>
+                <span className="sr-label">GitHub Sync</span>
+              </div>
+              <span className="sr-arrow">{ghExpanded ? '\u2039' : '\u203A'}</span>
+            </div>
+
+            {ghExpanded && (
+              <div className="gh-form">
+                {!github.connected ? (
+                  <>
+                    <div className="field">
+                      <label>Token</label>
+                      <input type="password" value={github.token} onChange={(e) => setGithub({...github, token: e.target.value})} placeholder="ghp_..." />
+                    </div>
+                    <div className="field">
+                      <label>Owner</label>
+                      <input value={github.owner} onChange={(e) => setGithub({...github, owner: e.target.value})} placeholder="username" />
+                    </div>
+                    <div className="field">
+                      <label>Repo</label>
+                      <input value={github.repo} onChange={(e) => setGithub({...github, repo: e.target.value})} placeholder="repo-name" />
+                    </div>
+                    <button className="primary-btn" onClick={connectGithub}>Connect</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="connected-info">Connected to {github.owner}/{github.repo}</div>
+                    <div className="sync-stats">
+                      {lastSyncTime > 0 && <p className="sync-note">Last sync: {new Date(lastSyncTime).toLocaleTimeString()}</p>}
+                      <p className="sync-note">Commits today: {commitsToday !== null ? commitsToday : '...'}</p>
+                    </div>
+                    <button className="primary-btn" onClick={forceSyncToGithub} disabled={!needsSync}>
+                      {needsSync ? 'Sync Now' : 'Up to date'}
+                    </button>
+                    <button className="danger-btn" onClick={() => {
+                      if (confirm('Disconnect from GitHub? Local data will be preserved.')) disconnectGithub()
+                    }}>Disconnect</button>
+                  </>
+                )}
+                {syncStatus && <div className="sync-status" style={{ marginTop: 8 }}>{syncStatus}</div>}
               </div>
             )}
-            {syncStatus && <div className="sync-status">{syncStatus}</div>}
-            <h2>App</h2>
-            <button className="primary-btn" onClick={async () => {
+
+            <button className="primary-btn" style={{ marginTop: 12 }} onClick={async () => {
               if (needsSync && github.connected) {
                 setSyncStatus('Syncing before reload...')
                 await forceSyncToGithub()
               }
               window.location.reload()
             }}>Reload App</button>
-            {needsSync && <p className="sync-note" style={{marginTop: '8px'}}>Changes pending sync</p>}
-            <p className="version-text">v0.0.0</p>
-          </div>
+            {needsSync && <p style={{ fontSize: 11, color: '#6c7086', marginTop: 8 }}>Changes pending sync</p>}
+            <p className="version-text">v0.1.0</p>
+          </>
         )}
       </main>
 
-      <nav className="navbar">
-        <button className={tab === 'log' ? 'active' : ''} onClick={() => setTab('log')}><span className="nav-icon">📝</span><span>Log</span></button>
-        <button className={tab === 'stats' ? 'active' : ''} onClick={() => setTab('stats')}><span className="nav-icon">📊</span><span>Stats</span></button>
-        <button className={tab === 'phases' ? 'active' : ''} onClick={() => setTab('phases')}><span className="nav-icon">🎯</span><span>Phases</span></button>
-        <button className={tab === 'settings' ? 'active' : ''} onClick={() => { setTab('settings'); fetchCommitsToday() }}><span className="nav-icon">⚙️</span><span>Settings</span></button>
+      {/* ---- Tab bar ---- */}
+      <nav className="tabbar">
+        <button className={tab === 'today' ? 'active' : ''} onClick={() => setTab('today')}>
+          <span className="glyph"><SunIcon /></span>
+        </button>
+        <button className={tab === 'stats' ? 'active' : ''} onClick={() => setTab('stats')}>
+          <span className="glyph"><ChartIcon /></span>
+        </button>
+        <button className={tab === 'settings' ? 'active' : ''} onClick={() => { setTab('settings'); fetchCommitsToday() }}>
+          <span className="glyph"><GearIcon /></span>
+        </button>
       </nav>
 
+      {/* ---- Phase Modal ---- */}
       {phaseModal && (
         <div className="modal-overlay" onClick={() => setPhaseModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>Add Phase</h3>
-            <div className="form">
-              <div className="field">
-                <label>Name</label>
-                <input value={phaseModal.name} onChange={(e) => setPhaseModal({...phaseModal, name: e.target.value})} placeholder="Cut, Bulk, Maintain..." />
-              </div>
-              <div className="field">
-                <label>Goal Weight (kg)</label>
-                <input type="text" inputMode="decimal" value={phaseModal.goals.weight} onChange={(e) => setPhaseModal({...phaseModal, goals: {...phaseModal.goals, weight: e.target.value}})} placeholder="75" />
-              </div>
-              <div className="field">
-                <label>Goal Body Fat %</label>
-                <input type="text" inputMode="decimal" value={phaseModal.goals.bodyFat} onChange={(e) => setPhaseModal({...phaseModal, goals: {...phaseModal.goals, bodyFat: e.target.value}})} placeholder="15" />
-              </div>
-              <div className="field">
-                <label>Goal Muscle %</label>
-                <input type="text" inputMode="decimal" value={phaseModal.goals.musclePct} onChange={(e) => setPhaseModal({...phaseModal, goals: {...phaseModal.goals, musclePct: e.target.value}})} placeholder="40" />
-              </div>
+            <div className="field">
+              <label>Name</label>
+              <input value={phaseModal.name} onChange={(e) => setPhaseModal({...phaseModal, name: e.target.value})} placeholder="Cut, Bulk, Maintain..." />
+            </div>
+            <div className="field">
+              <label>Goal Weight (kg)</label>
+              <input type="text" inputMode="decimal" value={phaseModal.goals.weight} onChange={(e) => setPhaseModal({...phaseModal, goals: {...phaseModal.goals, weight: e.target.value}})} placeholder="75" />
+            </div>
+            <div className="field">
+              <label>Goal Body Fat %</label>
+              <input type="text" inputMode="decimal" value={phaseModal.goals.bodyFat} onChange={(e) => setPhaseModal({...phaseModal, goals: {...phaseModal.goals, bodyFat: e.target.value}})} placeholder="15" />
+            </div>
+            <div className="field">
+              <label>Goal Muscle %</label>
+              <input type="text" inputMode="decimal" value={phaseModal.goals.musclePct} onChange={(e) => setPhaseModal({...phaseModal, goals: {...phaseModal.goals, musclePct: e.target.value}})} placeholder="40" />
             </div>
             <div className="modal-actions">
               <button className="cancel-btn" onClick={() => setPhaseModal(null)}>Cancel</button>
-              <button className="primary-btn" onClick={savePhaseModal}>Save</button>
+              <button className="primary-btn" style={{ marginTop: 0 }} onClick={savePhaseModal}>Save</button>
             </div>
           </div>
         </div>
@@ -788,5 +728,640 @@ function App() {
     </div>
   )
 }
+
+
+// ====================================================================
+// JOURNEY PANEL
+// ====================================================================
+function JourneyPanel({ entries, phases, sortedDates }) {
+  if (sortedDates.length === 0) return <div style={{ color: '#45475a', textAlign: 'center', padding: 40 }}>No data yet</div>
+
+  const firstKey = sortedDates[0]
+  const lastKey = sortedDates[sortedDates.length - 1]
+  const firstE = ensureHabits(entries[firstKey])
+  const lastE = ensureHabits(entries[lastKey])
+  const totalDays = sortedDates.length
+
+  const firstW = parseFloat(firstE.weight) || 0
+  const lastW = parseFloat(lastE.weight) || 0
+  const firstBf = parseFloat(firstE.bodyFat) || 0
+  const lastBf = parseFloat(lastE.bodyFat) || 0
+  const firstMu = parseFloat(firstE.musclePct) || 0
+  const lastMu = parseFloat(lastE.musclePct) || 0
+
+  const labels = sortedDates.map(k => k.slice(5))
+  const wts = sortedDates.map(k => parseFloat(entries[k]?.weight) || null)
+  const bfs = sortedDates.map(k => parseFloat(entries[k]?.bodyFat) || null)
+  const mus = sortedDates.map(k => parseFloat(entries[k]?.musclePct) || null)
+  const vis = sortedDates.map(k => parseFloat(entries[k]?.visceralFat) || null)
+  const fatMass = sortedDates.map(k => {
+    const w = parseFloat(entries[k]?.weight), bf = parseFloat(entries[k]?.bodyFat)
+    return (!isNaN(w) && !isNaN(bf)) ? +(w * bf / 100).toFixed(2) : null
+  })
+  const muMass = sortedDates.map(k => {
+    const w = parseFloat(entries[k]?.weight), mu = parseFloat(entries[k]?.musclePct)
+    return (!isNaN(w) && !isNaN(mu)) ? +(w * mu / 100).toFixed(2) : null
+  })
+
+  const canvasW = 337
+  const makeData = (vals, color) => ({
+    labels,
+    datasets: [{ data: vals, borderColor: color, backgroundColor: hexToRgba(color, 0.2), fill: true }]
+  })
+
+  return (
+    <>
+      <div className="journey-total">
+        <div className="jt-days">{totalDays}</div>
+        <div className="jt-right">
+          <div className="jt-label">Days tracked</div>
+          <div className="jt-sub">{firstKey} to {lastKey} / {phases.length} phases</div>
+        </div>
+      </div>
+
+      <div className="hero-metrics">
+        <div className="hero-card" style={{ '--accent': '#f38ba8' }}>
+          <div className="hero-val">{lastW.toFixed(1)}</div>
+          <div className="hero-label">Weight kg</div>
+          <div className="hero-delta"><DeltaBadge val={lastW - firstW} unit="kg" invertGood={true} /></div>
+        </div>
+        <div className="hero-card" style={{ '--accent': '#fab387' }}>
+          <div className="hero-val">{lastBf.toFixed(1)}</div>
+          <div className="hero-label">Body Fat %</div>
+          <div className="hero-delta"><DeltaBadge val={lastBf - firstBf} unit="%" invertGood={true} /></div>
+        </div>
+        <div className="hero-card" style={{ '--accent': '#a6e3a1' }}>
+          <div className="hero-val">{lastMu.toFixed(1)}</div>
+          <div className="hero-label">Muscle %</div>
+          <div className="hero-delta"><DeltaBadge val={lastMu - firstMu} unit="%" invertGood={false} /></div>
+        </div>
+      </div>
+
+      <div className="stat-section-title">Weight trajectory</div>
+      <div className="chart-card">
+        <div className="card-head">Weight <span className="v">{lastW.toFixed(1)} kg</span></div>
+        <Line
+          data={makeData(wts, '#f38ba8', 140)}
+          options={baseChartOpts()}
+          width={canvasW} height={140}
+          style={{ width: canvasW, height: 140 }}
+        />
+      </div>
+
+      <div className="stat-section-title">Body composition</div>
+      <div className="chart-card">
+        <div className="card-head">Fat vs Lean Mass (kg) <span className="v">
+          {fatMass.filter(v=>v!==null).length > 0 ? fatMass.filter(v=>v!==null).pop()?.toFixed(1) : '--'} / {muMass.filter(v=>v!==null).length > 0 ? muMass.filter(v=>v!==null).pop()?.toFixed(1) : '--'}
+        </span></div>
+        <Line
+          data={{
+            labels,
+            datasets: [
+              { data: fatMass, borderColor: '#fab387', backgroundColor: hexToRgba('#fab387', 0.15), fill: true, yAxisID: 'y' },
+              { data: muMass, borderColor: '#a6e3a1', backgroundColor: hexToRgba('#a6e3a1', 0.15), fill: true, yAxisID: 'y2' },
+            ]
+          }}
+          options={(() => {
+            const fv = fatMass.filter(v => v !== null), mv = muMass.filter(v => v !== null)
+            const fMin = Math.min(...fv), fMax = Math.max(...fv)
+            const mMin = Math.min(...mv), mMax = Math.max(...mv)
+            const range = Math.max(fMax - fMin, mMax - mMin, 2)
+            const pad = range * 0.15
+            const fCenter = (fMin + fMax) / 2, mCenter = (mMin + mMax) / 2
+            return baseChartOpts({
+              y:  { position: 'left',  min: fCenter - range/2 - pad, max: fCenter + range/2 + pad, ticks: { color: '#fab387', font: { size: 9 } }, grid: { color: '#313244' } },
+              y2: { position: 'right', min: mCenter - range/2 - pad, max: mCenter + range/2 + pad, ticks: { color: '#a6e3a1', font: { size: 9 } }, grid: { display: false } },
+            })
+          })()}
+          width={canvasW} height={140}
+          style={{ width: canvasW, height: 140 }}
+        />
+      </div>
+
+      <div className="chart-card">
+        <div className="card-head">Body Fat % <span className="v">{lastBf.toFixed(1)}%</span></div>
+        <Line data={makeData(bfs, '#fab387', 120)} options={baseChartOpts()} width={canvasW} height={120} style={{ width: canvasW, height: 120 }} />
+      </div>
+      <div className="chart-card">
+        <div className="card-head">Muscle % <span className="v">{lastMu.toFixed(1)}%</span></div>
+        <Line data={makeData(mus, '#a6e3a1', 120)} options={baseChartOpts()} width={canvasW} height={120} style={{ width: canvasW, height: 120 }} />
+      </div>
+      <div className="chart-card">
+        <div className="card-head">Visceral Fat <span className="v">{vis.filter(v=>v!==null).pop() ?? '--'}</span></div>
+        <Line
+          data={makeData(vis, '#cba6f7', 90)}
+          options={{
+            ...baseChartOpts(),
+            scales: { x: { display: false }, y: { ticks: { color: '#6c7086', font: { size: 9 }, stepSize: 1 }, grid: { color: '#313244' }, suggestedMin: 0, suggestedMax: 8 } }
+          }}
+          width={canvasW} height={90}
+          style={{ width: canvasW, height: 90 }}
+        />
+      </div>
+      <MeasurementsTable entries={entries} dates={sortedDates} />
+    </>
+  )
+}
+
+
+// ====================================================================
+// PHASE PANEL
+// ====================================================================
+function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhaseIdx }) {
+  if (phases.length === 0) return <div style={{ color: '#45475a', textAlign: 'center', padding: 40 }}>No phases yet</div>
+
+  // Default to current phase
+  const currentIdx = phases.findIndex(p => !p.end)
+  const selectedIdx = statsPhaseIdx >= 0 && statsPhaseIdx < phases.length ? statsPhaseIdx : (currentIdx >= 0 ? currentIdx : phases.length - 1)
+  const p = phases[selectedIdx]
+  if (!p) return null
+
+  const phaseKeys = sortedDates.filter(k => k >= p.start && (!p.end || k <= p.end))
+  if (phaseKeys.length < 2) return (
+    <>
+      <div className="phase-picker">
+        <select value={selectedIdx} onChange={(e) => setStatsPhaseIdx(+e.target.value)}>
+          {phases.map((ph, i) => (
+            <option key={ph.id} value={i}>{ph.name} ({ph.start} to {ph.end || 'now'}){!ph.end ? ' - current' : ''}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{ color: '#45475a', textAlign: 'center', padding: 40 }}>Not enough data for this phase</div>
+    </>
+  )
+
+  const first = ensureHabits(entries[phaseKeys[0]])
+  const last = ensureHabits(entries[phaseKeys[phaseKeys.length - 1]])
+  const days = phaseKeys.length
+  const isOngoing = !p.end
+
+  const fW = parseFloat(first.weight) || 0
+  const lW = parseFloat(last.weight) || 0
+  const fBf = parseFloat(first.bodyFat) || 0
+  const lBf = parseFloat(last.bodyFat) || 0
+  const fMu = parseFloat(first.musclePct) || 0
+  const lMu = parseFloat(last.musclePct) || 0
+  const fVi = parseFloat(first.visceralFat) || 0
+  const lVi = parseFloat(last.visceralFat) || 0
+
+  const wtChange = lW - fW
+  const bfChange = lBf - fBf
+  const muChange = lMu - fMu
+
+  const fatMassFirst = fW * fBf / 100
+  const fatMassLast = lW * lBf / 100
+  const lbmFirst = fW - fatMassFirst
+  const lbmLast = lW - fatMassLast
+  const fatMassChange = fatMassLast - fatMassFirst
+  const lbmChange = lbmLast - lbmFirst
+
+  // Grade
+  function gradePhase() {
+    if (!p.goals) return { grade: '--', cls: '' }
+    let score = 0, count = 0
+    const pairs = [
+      [fW, lW, parseFloat(p.goals.weight)],
+      [fBf, lBf, parseFloat(p.goals.bodyFat)],
+      [fMu, lMu, parseFloat(p.goals.musclePct)],
+    ]
+    pairs.forEach(([start, end, goal]) => {
+      const target = goal - start
+      const actual = end - start
+      if (!isNaN(goal) && Math.abs(target) > 0.3) {
+        score += Math.min(1, Math.max(0, actual / target))
+        count++
+      }
+    })
+    const avg = count > 0 ? score / count : 0
+    if (avg >= 0.9) return { grade: 'A', cls: 'A' }
+    if (avg >= 0.7) return { grade: 'B', cls: 'B' }
+    if (avg >= 0.5) return { grade: 'C', cls: 'C' }
+    if (avg >= 0.3) return { grade: 'D', cls: 'D' }
+    return { grade: 'F', cls: 'F' }
+  }
+
+  const { grade, cls: gradeCls } = gradePhase()
+  const phaseColor = getPhaseColor(p.name)
+
+  // Goal progress for ongoing phases
+  function goalProgress(startVal, currentVal, goalVal) {
+    const target = goalVal - startVal
+    if (Math.abs(target) < 0.1) return 100
+    return Math.min(100, Math.max(0, Math.round((currentVal - startVal) / target * 100)))
+  }
+
+  const labels = phaseKeys.map(k => k.slice(5))
+  const canvasW = 337
+  const phaseWts = phaseKeys.map(k => parseFloat(entries[k]?.weight) || null)
+  const pFatMass = phaseKeys.map(k => { const w = parseFloat(entries[k]?.weight), bf = parseFloat(entries[k]?.bodyFat); return (!isNaN(w) && !isNaN(bf)) ? +(w * bf / 100).toFixed(1) : null })
+  const pMusMass = phaseKeys.map(k => { const w = parseFloat(entries[k]?.weight), mu = parseFloat(entries[k]?.musclePct); return (!isNaN(w) && !isNaN(mu)) ? +(w * mu / 100).toFixed(1) : null })
+  const pBfVals = phaseKeys.map(k => parseFloat(entries[k]?.bodyFat) || null)
+  const pMuVals = phaseKeys.map(k => parseFloat(entries[k]?.musclePct) || null)
+
+  // Streaks
+  const streaks = ORBIT_HABITS.map(h => {
+    let streak = 0
+    for (let i = phaseKeys.length - 1; i >= 0; i--) {
+      const e = ensureHabits(entries[phaseKeys[i]])
+      const v = e.habits?.[h.key]
+      if (v === null || v === undefined) continue
+      if (v) streak++; else break
+    }
+    return { ...h, streak }
+  })
+
+  // Work totals
+  let liftCount = 0, cardioCount = 0, stretchCount = 0, caliCount = 0
+  phaseKeys.forEach(k => {
+    const e = ensureHabits(entries[k])
+    if (e.habits?.lift) liftCount++
+    if (e.habits?.cardio) cardioCount++
+    if (e.habits?.stretch) stretchCount++
+    if (e.habits?.calisthenics) caliCount++
+  })
+
+  return (
+    <>
+      <div className="phase-picker">
+        <select value={selectedIdx} onChange={(e) => setStatsPhaseIdx(+e.target.value)}>
+          {phases.map((ph, i) => (
+            <option key={ph.id} value={i}>{ph.name} ({ph.start} to {ph.end || 'now'}){!ph.end ? ' - current' : ''}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Phase detail card */}
+      <div className="phase-detail" style={{ '--pc': phaseColor }}>
+        <div className="pd-header">
+          <div className="pd-name">{p.name}</div>
+          {isOngoing
+            ? <div className="pd-grade in-progress">In Progress</div>
+            : <div className={`pd-grade ${gradeCls}`}>{grade}</div>
+          }
+        </div>
+        <div className="pd-dates">{days} days -- {p.start} to {p.end || 'ongoing'}{p.goals ? ` -- Goal: ${p.goals.weight || '?'}kg / ${p.goals.bodyFat || '?'}% BF / ${p.goals.musclePct || '?'}% Mu` : ''}</div>
+        <div className="pd-stats">
+          <div className="pd-stat">
+            <div className="pd-sv" style={{ color: '#f38ba8' }}>{lW.toFixed(1)}</div>
+            <div className="pd-sl">Weight</div>
+            <div className="pd-sd" style={{ color: wtChange <= 0 ? '#a6e3a1' : '#f38ba8' }}>{wtChange >= 0 ? '+' : ''}{wtChange.toFixed(1)}</div>
+          </div>
+          <div className="pd-stat">
+            <div className="pd-sv" style={{ color: '#fab387' }}>{lBf.toFixed(1)}%</div>
+            <div className="pd-sl">Body Fat</div>
+            <div className="pd-sd" style={{ color: bfChange <= 0 ? '#a6e3a1' : '#f38ba8' }}>{bfChange >= 0 ? '+' : ''}{bfChange.toFixed(1)}</div>
+          </div>
+          <div className="pd-stat">
+            <div className="pd-sv" style={{ color: '#a6e3a1' }}>{lMu.toFixed(1)}%</div>
+            <div className="pd-sl">Muscle</div>
+            <div className="pd-sd" style={{ color: muChange >= 0 ? '#a6e3a1' : '#f38ba8' }}>{muChange >= 0 ? '+' : ''}{muChange.toFixed(1)}</div>
+          </div>
+        </div>
+
+        {/* Goal progress for ongoing */}
+        {isOngoing && p.goals && (
+          <div style={{ marginTop: 10 }}>
+            {[
+              { label: 'Weight', start: fW, current: lW, goal: parseFloat(p.goals.weight), unit: 'kg', color: '#f38ba8' },
+              { label: 'Body Fat', start: fBf, current: lBf, goal: parseFloat(p.goals.bodyFat), unit: '%', color: '#fab387' },
+              { label: 'Muscle', start: fMu, current: lMu, goal: parseFloat(p.goals.musclePct), unit: '%', color: '#a6e3a1' },
+            ].filter(m => !isNaN(m.goal)).map(m => {
+              const pct = goalProgress(m.start, m.current, m.goal)
+              return (
+                <div key={m.label} className="progress-bar-wrap">
+                  <div className="progress-bar-header">
+                    <span>{m.label}: {m.current.toFixed(1)} / {m.goal} {m.unit}</span>
+                    <span style={{ color: m.color, fontWeight: 700 }}>{pct}%</span>
+                  </div>
+                  <div className="progress-bar-track">
+                    <div className="progress-bar-fill" style={{ width: pct + '%', background: m.color }}></div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Rate badges */}
+      <div className="rate-row">
+        <div className="rate-badge">
+          <div className="rb-val" style={{ color: '#f38ba8' }}>{wtChange >= 0 ? '+' : ''}{wtChange.toFixed(1)}</div>
+          <div className="rb-lbl">Weight delta kg</div>
+          <div className="rb-bar" style={{ background: '#f38ba8', width: Math.min(100, Math.abs(wtChange) / 3 * 100) + '%' }}></div>
+        </div>
+        <div className="rate-badge">
+          <div className="rb-val" style={{ color: '#fab387' }}>{fatMassChange >= 0 ? '+' : ''}{fatMassChange.toFixed(1)}</div>
+          <div className="rb-lbl">Fat Mass kg</div>
+          <div className="rb-bar" style={{ background: '#fab387', width: Math.min(100, Math.abs(fatMassChange) / 3 * 100) + '%' }}></div>
+        </div>
+        <div className="rate-badge">
+          <div className="rb-val" style={{ color: '#a6e3a1' }}>{lbmChange >= 0 ? '+' : ''}{lbmChange.toFixed(1)}</div>
+          <div className="rb-lbl">Lean Mass kg</div>
+          <div className="rb-bar" style={{ background: '#a6e3a1', width: Math.min(100, Math.abs(lbmChange) / 3 * 100) + '%' }}></div>
+        </div>
+      </div>
+
+      {/* Phase charts */}
+      <div className="stat-section-title">Phase weight</div>
+      <div className="chart-card">
+        <div className="card-head">Weight <span className="v">{lW.toFixed(1)} kg</span></div>
+        <Line
+          data={{
+            labels,
+            datasets: [
+              { data: phaseWts, borderColor: '#f38ba8', backgroundColor: hexToRgba('#f38ba8', 0.2), fill: true },
+              { data: phaseWts.map(() => fW), borderColor: '#45475a', borderDash: [4, 4], borderWidth: 1, fill: false, pointRadius: 0 },
+            ]
+          }}
+          options={baseChartOpts()}
+          width={canvasW} height={120}
+          style={{ width: canvasW, height: 120 }}
+        />
+      </div>
+
+      <div className="stat-section-title">Phase body composition</div>
+      <div className="chart-card">
+        <div className="card-head">Fat / Muscle Mass (kg) <span className="v">
+          {pFatMass.filter(v=>v!==null).pop()?.toFixed(1) || '--'} / {pMusMass.filter(v=>v!==null).pop()?.toFixed(1) || '--'}
+        </span></div>
+        <Line
+          data={{
+            labels,
+            datasets: [
+              { data: pFatMass, borderColor: '#fab387', backgroundColor: hexToRgba('#fab387', 0.15), fill: true, yAxisID: 'y' },
+              { data: pMusMass, borderColor: '#a6e3a1', backgroundColor: hexToRgba('#a6e3a1', 0.15), fill: true, yAxisID: 'y2' },
+            ]
+          }}
+          options={(() => {
+            const fv = pFatMass.filter(v => v !== null), mv = pMusMass.filter(v => v !== null)
+            if (!fv.length || !mv.length) return baseChartOpts({
+              y:  { position: 'left',  ticks: { color: '#fab387', font: { size: 9 } }, grid: { color: '#313244' } },
+              y2: { position: 'right', ticks: { color: '#a6e3a1', font: { size: 9 } }, grid: { display: false } },
+            })
+            const fMin = Math.min(...fv), fMax = Math.max(...fv)
+            const mMin = Math.min(...mv), mMax = Math.max(...mv)
+            const range = Math.max(fMax - fMin, mMax - mMin, 2)
+            const pad = range * 0.15
+            const fCenter = (fMin + fMax) / 2, mCenter = (mMin + mMax) / 2
+            return baseChartOpts({
+              y:  { position: 'left',  min: fCenter - range/2 - pad, max: fCenter + range/2 + pad, ticks: { color: '#fab387', font: { size: 9 } }, grid: { color: '#313244' } },
+              y2: { position: 'right', min: mCenter - range/2 - pad, max: mCenter + range/2 + pad, ticks: { color: '#a6e3a1', font: { size: 9 } }, grid: { display: false } },
+            })
+          })()}
+          width={canvasW} height={110}
+          style={{ width: canvasW, height: 110 }}
+        />
+      </div>
+
+      <div className="charts-row">
+        <div className="chart-card">
+          <div className="card-head">Body Fat % <span className="v">{lBf.toFixed(1)}%</span></div>
+          <Line
+            data={{ labels, datasets: [{ data: pBfVals, borderColor: '#fab387', backgroundColor: hexToRgba('#fab387', 0.2), fill: true }] }}
+            options={{ ...baseChartOpts(), scales: { x: { display: false }, y: { ticks: { color: '#6c7086', font: { size: 8 } }, grid: { color: '#313244' } } } }}
+            width={155} height={90}
+            style={{ width: 155, height: 90 }}
+          />
+        </div>
+        <div className="chart-card">
+          <div className="card-head">Muscle % <span className="v">{lMu.toFixed(1)}%</span></div>
+          <Line
+            data={{ labels, datasets: [{ data: pMuVals, borderColor: '#a6e3a1', backgroundColor: hexToRgba('#a6e3a1', 0.2), fill: true }] }}
+            options={{ ...baseChartOpts(), scales: { x: { display: false }, y: { ticks: { color: '#6c7086', font: { size: 8 } }, grid: { color: '#313244' } } } }}
+            width={155} height={90}
+            style={{ width: 155, height: 90 }}
+          />
+        </div>
+      </div>
+
+      {/* Deltas */}
+      <div className="stat-section-title">Deltas this phase</div>
+      {[
+        ['Weight', fW, lW, 'kg', '#f38ba8'],
+        ['Body Fat', fBf, lBf, '%', '#fab387'],
+        ['Muscle', fMu, lMu, '%', '#a6e3a1'],
+        ['Visceral', fVi, lVi, '', '#cba6f7'],
+      ].map(([lbl, fv, lv, unit, color]) => {
+        const d = lv - fv
+        return (
+          <div key={lbl} className="adv-metric">
+            <div className="am-left">
+              <div className="am-label">{lbl}</div>
+              <div className="am-sub">{fv.toFixed(1)}{unit} {'\u2192'} {lv.toFixed(1)}{unit}</div>
+            </div>
+            <div className="am-val" style={{ '--c': color }}>{d >= 0 ? '+' : ''}{d.toFixed(1)}{unit}</div>
+          </div>
+        )
+      })}
+
+      {/* Ratio */}
+      {Math.abs(fatMassChange) > 0.01 && Math.abs(lbmChange) > 0.01 && (
+        <div className="adv-metric">
+          <div className="am-left">
+            <div className="am-label">{fatMassChange < 0 && lbmChange > 0 ? 'Recomp ratio' : fatMassChange > 0 && lbmChange > 0 ? 'Lean gain ratio' : 'Fat:Muscle ratio'}</div>
+            <div className="am-sub">
+              {fatMassChange < 0 && lbmChange > 0
+                ? 'For every 1kg fat lost'
+                : fatMassChange > 0 && lbmChange > 0
+                  ? 'Muscle of total gained'
+                  : `Fat ${fatMassChange.toFixed(1)}kg / Muscle ${lbmChange.toFixed(1)}kg`}
+            </div>
+          </div>
+          <div className="am-val" style={{ '--c': fatMassChange < 0 && lbmChange > 0 ? '#a6e3a1' : '#89b4fa' }}>
+            {fatMassChange < 0 && lbmChange > 0
+              ? `+${Math.abs(lbmChange / fatMassChange).toFixed(2)} kg muscle`
+              : fatMassChange > 0 && lbmChange > 0
+                ? `${(lbmChange / (fatMassChange + lbmChange) * 100).toFixed(0)}%`
+                : (fatMassChange / lbmChange).toFixed(2)}
+          </div>
+        </div>
+      )}
+
+      {/* Streaks */}
+      <div className="stat-section-title">Current streaks</div>
+      <div className="chart-card">
+        {streaks.map(h => (
+          <div key={h.key} className="streak-row">
+            <span className="s-icon">{h.icon}</span>
+            <span className="s-name">{h.name}</span>
+            <span className="s-val" style={{ color: h.color }}>{h.streak}d</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Work totals */}
+      <div className="stat-section-title">Activity totals</div>
+      <div className="chart-card">
+        {[['Lift sessions', liftCount, '#f38ba8'],
+          ['Cardio sessions', cardioCount, '#89dceb'],
+          ['Stretch sessions', stretchCount, '#a6e3a1'],
+          ['Calisthenics', caliCount, '#fab387']].map(([lbl, v, c]) => (
+          <div key={lbl} className="work-stat">
+            <span className="ws-label">{lbl}</span>
+            <span className="ws-val" style={{ color: c }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <MeasurementsTable entries={entries} dates={phaseKeys} />
+    </>
+  )
+}
+
+
+// ====================================================================
+// MEASUREMENTS TABLE (shared)
+// ====================================================================
+function MeasurementsTable({ entries, dates }) {
+  if (!dates || dates.length === 0) return null
+  const rows = [...dates].reverse()
+  return (
+    <div className="measurements-table">
+      <div className="card-head" style={{ marginBottom: 8 }}>Measurements</div>
+      <div className="mt-header">
+        <span className="mt-date">Date</span>
+        <span className="mt-val" style={{ color: '#f38ba8' }}>Wt</span>
+        <span className="mt-val" style={{ color: '#fab387' }}>BF%</span>
+        <span className="mt-val" style={{ color: '#a6e3a1' }}>Mu%</span>
+        <span className="mt-val" style={{ color: '#cba6f7' }}>Vi</span>
+      </div>
+      <div className="mt-body">
+        {rows.map(d => {
+          const e = entries[d]
+          if (!e) return null
+          const [, m, day] = d.split('-')
+          return (
+            <div key={d} className="mt-row">
+              <span className="mt-date">{`${day}/${m}`}</span>
+              <span className="mt-val">{e.weight || '—'}</span>
+              <span className="mt-val">{e.bodyFat || '—'}</span>
+              <span className="mt-val">{e.musclePct || '—'}</span>
+              <span className="mt-val">{e.visceralFat || '—'}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
+// HABITS PANEL
+// ====================================================================
+function HabitsPanel({ trailsData, habitScores, entries, phases, sortedDates }) {
+  // Streaks (current phase)
+  const curPhase = phases.find(p => !p.end)
+  const phaseKeys = curPhase ? sortedDates.filter(k => k >= curPhase.start && (!curPhase.end || k <= curPhase.end)) : sortedDates
+
+  const streaks = ORBIT_HABITS.map(h => {
+    let streak = 0
+    for (let i = phaseKeys.length - 1; i >= 0; i--) {
+      const e = ensureHabits(entries[phaseKeys[i]])
+      const v = e.habits?.[h.key]
+      if (v === null || v === undefined) continue
+      if (v) streak++; else break
+    }
+    return { ...h, streak }
+  })
+
+  return (
+    <>
+      <div className="stat-section-title">21-day trails</div>
+      <div className="trails-section" style={{ marginBottom: 12 }}>
+        <div className="section-h">
+          <span className="t"></span>
+          <span className="sub">3 wk {'\u2192'} today</span>
+        </div>
+        {trailsData.map(h => (
+          <div key={h.key} className="trail">
+            <span className="t-icon">{h.icon}</span>
+            <span className="t-name">{h.name}{h.auto ? <span className="auto">auto</span> : ''}</span>
+            <div className="dots">
+              {h.dots.map((dot, i) => (
+                <div key={i} className={dot.cls} style={{ '--c': dot.color }}></div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="stat-section-title">Habit compliance -- all time</div>
+      <div className="compliance-grid">
+        {habitScores.map(hs => {
+          const pctVal = Math.round(hs.pct * 100)
+          return (
+            <div key={hs.key} className="comp-cell">
+              <div className="name">{hs.icon} {hs.name}</div>
+              <div className="pct" style={{ color: hs.color }}>{pctVal}%</div>
+              <div className="meta">{hs.done} / {hs.total} days</div>
+              <div className="pct-bar">
+                <div className="pct-fill" style={{ width: pctVal + '%', background: hs.color }}></div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="stat-section-title">Streaks ({curPhase ? 'current phase' : 'all time'})</div>
+      <div className="chart-card">
+        {streaks.map(h => (
+          <div key={h.key} className="streak-row">
+            <span className="s-icon">{h.icon}</span>
+            <span className="s-name">{h.name}</span>
+            <span className="s-val" style={{ color: h.color }}>{h.streak}d</span>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+
+// ====================================================================
+// SETTINGS: Current Phase Summary
+// ====================================================================
+function SettingsPhaseSummary({ entries, phases, sortedDates }) {
+  const curPhase = phases.find(p => !p.end)
+  if (!curPhase) return null
+
+  const phaseKeys = sortedDates.filter(k => k >= curPhase.start && (!curPhase.end || k <= curPhase.end))
+  if (phaseKeys.length < 2) return (
+    <>
+      <div className="settings-section">Current Phase Summary</div>
+      <div className="phase-delta">
+        <div style={{ color: '#45475a', fontSize: 12 }}>Not enough data yet</div>
+      </div>
+    </>
+  )
+
+  const first = entries[phaseKeys[0]]
+  const last = entries[phaseKeys[phaseKeys.length - 1]]
+  const days = phaseKeys.length
+
+  return (
+    <>
+      <div className="settings-section">Current Phase Summary</div>
+      <div className="phase-delta">
+        <div className="pd-title">{curPhase.name} -- {days} days</div>
+        {[
+          ['Weight', first.weight, last.weight, 'kg'],
+          ['Body Fat', first.bodyFat, last.bodyFat, '%'],
+          ['Muscle', first.musclePct, last.musclePct, '%'],
+          ['Visceral', first.visceralFat, last.visceralFat, ''],
+        ].map(([lbl, fv, lv, unit]) => {
+          const d = (parseFloat(lv) || 0) - (parseFloat(fv) || 0)
+          const sign = d >= 0 ? '+' : ''
+          return (
+            <div key={lbl} className="delta-row">
+              <span className="d-label">{lbl}</span>
+              <span className="d-val">{sign}{d.toFixed(1)}{unit}</span>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
 
 export default App
