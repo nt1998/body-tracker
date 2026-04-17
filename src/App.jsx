@@ -718,7 +718,7 @@ function App() {
               window.location.reload()
             }}>Reload App</button>
             {needsSync && <p style={{ fontSize: 11, color: '#6c7086', marginTop: 8 }}>Changes pending sync</p>}
-            <p className="version-text">v0.1.0</p>
+            <p className="version-text">v0.2.0</p>
           </>
         )}
       </main>
