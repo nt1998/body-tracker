@@ -111,12 +111,51 @@ function ensureHabits(entry) {
   return entry
 }
 
+// Phase band plugin for Chart.js — draws colored vertical bands behind chart data
+const phaseBandsPlugin = {
+  id: 'phaseBands',
+  beforeDraw(chart) {
+    const bands = chart.options.plugins?.phaseBands?.bands
+    if (!bands || !bands.length) return
+    const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart
+    const totalLabels = chart.data.labels.length
+    if (totalLabels === 0) return
+    const pxPerLabel = (right - left) / (totalLabels - 1 || 1)
+    bands.forEach(({ startIdx, endIdx, color }) => {
+      const x0 = left + (startIdx - 0.5) * pxPerLabel
+      const x1 = left + (endIdx + 0.5) * pxPerLabel
+      ctx.save()
+      ctx.fillStyle = color
+      ctx.fillRect(Math.max(x0, left), top, Math.min(x1, right) - Math.max(x0, left), bottom - top)
+      ctx.restore()
+    })
+  }
+}
+ChartJS.register(phaseBandsPlugin)
+
+function buildPhaseBands(sortedDates, phases) {
+  const bands = []
+  phases.forEach(p => {
+    const startIdx = sortedDates.findIndex(d => d >= p.start)
+    if (startIdx === -1) return
+    let endIdx = p.end ? sortedDates.findIndex(d => d > p.end) : sortedDates.length
+    if (endIdx === -1) endIdx = sortedDates.length
+    endIdx = Math.max(endIdx - 1, startIdx)
+    const color = getPhaseColor(p.name)
+    bands.push({ startIdx, endIdx, color: hexToRgba(color, 0.06) })
+  })
+  return bands
+}
+
 // Base chart options: responsive: false, animation: false
-function baseChartOpts(extraScales) {
+function baseChartOpts(extraScales, phaseBands) {
   return {
     responsive: false,
     animation: false,
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: { display: false },
+      ...(phaseBands ? { phaseBands: { bands: phaseBands } } : {})
+    },
     scales: {
       x: { display: false },
       y: { ticks: { color: '#6c7086', font: { size: 9 } }, grid: { color: '#313244' } },
@@ -749,6 +788,7 @@ function JourneyPanel({ entries, phases, sortedDates }) {
   const firstMu = parseFloat(firstE.musclePct) || 0
   const lastMu = parseFloat(lastE.musclePct) || 0
 
+  const phaseBands = buildPhaseBands(sortedDates, phases)
   const labels = sortedDates.map(k => k.slice(5))
   const wts = sortedDates.map(k => parseFloat(entries[k]?.weight) || null)
   const bfs = sortedDates.map(k => parseFloat(entries[k]?.bodyFat) || null)
@@ -766,8 +806,9 @@ function JourneyPanel({ entries, phases, sortedDates }) {
   const canvasW = 337
   const makeData = (vals, color) => ({
     labels,
-    datasets: [{ data: vals, borderColor: color, backgroundColor: hexToRgba(color, 0.2), fill: true }]
+    datasets: [{ data: vals, borderColor: color, backgroundColor: hexToRgba(color, 0.12), fill: true }]
   })
+  const journeyOpts = (extraScales) => baseChartOpts(extraScales, phaseBands)
 
   return (
     <>
@@ -802,7 +843,7 @@ function JourneyPanel({ entries, phases, sortedDates }) {
         <div className="card-head">Weight <span className="v">{lastW.toFixed(1)} kg</span></div>
         <Line
           data={makeData(wts, '#f38ba8', 140)}
-          options={baseChartOpts()}
+          options={journeyOpts()}
           width={canvasW} height={140}
           style={{ width: canvasW, height: 140 }}
         />
@@ -817,8 +858,8 @@ function JourneyPanel({ entries, phases, sortedDates }) {
           data={{
             labels,
             datasets: [
-              { data: fatMass, borderColor: '#fab387', backgroundColor: hexToRgba('#fab387', 0.15), fill: true, yAxisID: 'y' },
-              { data: muMass, borderColor: '#a6e3a1', backgroundColor: hexToRgba('#a6e3a1', 0.15), fill: true, yAxisID: 'y2' },
+              { data: fatMass, borderColor: '#fab387', backgroundColor: hexToRgba('#fab387', 0.1), fill: true, yAxisID: 'y' },
+              { data: muMass, borderColor: '#a6e3a1', backgroundColor: hexToRgba('#a6e3a1', 0.1), fill: true, yAxisID: 'y2' },
             ]
           }}
           options={(() => {
@@ -828,7 +869,7 @@ function JourneyPanel({ entries, phases, sortedDates }) {
             const range = Math.max(fMax - fMin, mMax - mMin, 2)
             const pad = range * 0.15
             const fCenter = (fMin + fMax) / 2, mCenter = (mMin + mMax) / 2
-            return baseChartOpts({
+            return journeyOpts({
               y:  { position: 'left',  min: fCenter - range/2 - pad, max: fCenter + range/2 + pad, ticks: { color: '#fab387', font: { size: 9 } }, grid: { color: '#313244' } },
               y2: { position: 'right', min: mCenter - range/2 - pad, max: mCenter + range/2 + pad, ticks: { color: '#a6e3a1', font: { size: 9 } }, grid: { display: false } },
             })
@@ -840,18 +881,18 @@ function JourneyPanel({ entries, phases, sortedDates }) {
 
       <div className="chart-card">
         <div className="card-head">Body Fat % <span className="v">{lastBf.toFixed(1)}%</span></div>
-        <Line data={makeData(bfs, '#fab387', 120)} options={baseChartOpts()} width={canvasW} height={120} style={{ width: canvasW, height: 120 }} />
+        <Line data={makeData(bfs, '#fab387', 120)} options={journeyOpts()} width={canvasW} height={120} style={{ width: canvasW, height: 120 }} />
       </div>
       <div className="chart-card">
         <div className="card-head">Muscle % <span className="v">{lastMu.toFixed(1)}%</span></div>
-        <Line data={makeData(mus, '#a6e3a1', 120)} options={baseChartOpts()} width={canvasW} height={120} style={{ width: canvasW, height: 120 }} />
+        <Line data={makeData(mus, '#a6e3a1', 120)} options={journeyOpts()} width={canvasW} height={120} style={{ width: canvasW, height: 120 }} />
       </div>
       <div className="chart-card">
         <div className="card-head">Visceral Fat <span className="v">{vis.filter(v=>v!==null).pop() ?? '--'}</span></div>
         <Line
           data={makeData(vis, '#cba6f7', 90)}
           options={{
-            ...baseChartOpts(),
+            ...journeyOpts(),
             scales: { x: { display: false }, y: { ticks: { color: '#6c7086', font: { size: 9 }, stepSize: 1 }, grid: { color: '#313244' }, suggestedMin: 0, suggestedMax: 8 } }
           }}
           width={canvasW} height={90}

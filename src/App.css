@@ -12,6 +12,12 @@
   overflow: hidden;
   padding-top: env(safe-area-inset-top, 0);
   padding-bottom: env(safe-area-inset-bottom, 0);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.app input, .app textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Block landscape mode */
