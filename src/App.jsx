@@ -158,6 +158,35 @@ const phaseBandsPlugin = {
 }
 ChartJS.register(phaseBandsPlugin)
 
+// Week-boundary markers — subtle vertical lines at Sun→Mon transitions
+const weekMarkersPlugin = {
+  id: 'weekMarkers',
+  beforeDatasetsDraw(chart) {
+    const dates = chart.options.plugins?.weekMarkers?.dates
+    if (!dates || dates.length < 2) return
+    const { ctx, chartArea, scales } = chart
+    ctx.save()
+    ctx.strokeStyle = 'rgba(137, 180, 250, 0.13)'
+    ctx.lineWidth = 1
+    ctx.setLineDash([])
+    for (let i = 1; i < dates.length; i++) {
+      const cur = parseDate(dates[i])
+      if (cur.getDay() !== 1) continue
+      const prev = parseDate(dates[i - 1])
+      if (prev.getDay() === 1) continue
+      const xCur = scales.x.getPixelForValue(i)
+      const xPrev = scales.x.getPixelForValue(i - 1)
+      const x = (xCur + xPrev) / 2
+      ctx.beginPath()
+      ctx.moveTo(x, chartArea.top)
+      ctx.lineTo(x, chartArea.bottom)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+}
+ChartJS.register(weekMarkersPlugin)
+
 function buildPhaseBands(sortedDates, phases) {
   const bands = []
   phases.forEach(p => {
@@ -173,13 +202,14 @@ function buildPhaseBands(sortedDates, phases) {
 }
 
 // Base chart options: responsive: false, animation: false
-function baseChartOpts(extraScales, phaseBands) {
+function baseChartOpts(extraScales, phaseBands, dates) {
   return {
     responsive: false,
     animation: false,
     plugins: {
       legend: { display: false },
-      ...(phaseBands ? { phaseBands: { bands: phaseBands } } : {})
+      ...(phaseBands ? { phaseBands: { bands: phaseBands } } : {}),
+      ...(dates ? { weekMarkers: { dates } } : {})
     },
     scales: {
       x: { ticks: { color: '#6c7086', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } },
@@ -239,9 +269,12 @@ function App() {
   const [ghExpanded, setGhExpanded] = useState(false)
   const [gymWorkouts, setGymWorkouts] = useState({})
   const [habitDetail, setHabitDetail] = useState(null)
+  const [celebPhase, setCelebPhase] = useState('orbit')
+  const [animT, setAnimT] = useState(0)
   const syncTimeoutRef = useRef(null)
   const dateInputRef = useRef(null)
   const longPressRef = useRef(null)
+  const celebRafRef = useRef(null)
 
   const todayKey = dateKey(new Date())
   const isToday = date === todayKey
@@ -534,6 +567,38 @@ function App() {
     return { done, total: applicable.length }
   }, [date, applicable, readHabit])
 
+  const allDone = orbitFraction.total > 0 && orbitFraction.done === orbitFraction.total
+
+  // Reset celebration when the day's completion state changes
+  useEffect(() => {
+    if (!allDone) setCelebPhase('orbit')
+  }, [allDone, date])
+
+  // RAF loop for swallow / eject animations
+  useEffect(() => {
+    if (celebPhase !== 'swallow' && celebPhase !== 'eject') return
+    const start = performance.now()
+    const duration = celebPhase === 'swallow' ? 1600 : 900
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / duration)
+      setAnimT(t)
+      if (t < 1) {
+        celebRafRef.current = requestAnimationFrame(step)
+      } else {
+        setCelebPhase(prev => prev === 'swallow' ? 'hidden' : 'orbit')
+        setAnimT(0)
+      }
+    }
+    celebRafRef.current = requestAnimationFrame(step)
+    return () => { if (celebRafRef.current) cancelAnimationFrame(celebRafRef.current) }
+  }, [celebPhase])
+
+  const handleCenterClick = () => {
+    if (!allDone) return
+    if (celebPhase === 'orbit') setCelebPhase('swallow')
+    else if (celebPhase === 'hidden') setCelebPhase('eject')
+  }
+
   // ---- Computed: sorted dates ----
   const sortedDates = useMemo(() => Object.keys(entries).sort(), [entries])
 
@@ -624,23 +689,52 @@ function App() {
               <div className="orbit">
                 <div className="orbit-ring"></div>
                 <div className="orbit-ring r2"></div>
-                <div className="orbit-center">
-                  <div className="frac">
-                    <span>{orbitFraction.done}</span>
-                    <span className="denom">/<span>{orbitFraction.total}</span></span>
-                  </div>
-                  <div className="lbl">in orbit</div>
+                <div
+                  className={`orbit-center ${allDone ? 'celebrating' : ''} ${celebPhase}`}
+                  onClick={handleCenterClick}
+                  style={{ cursor: allDone ? 'pointer' : 'default' }}
+                >
+                  {allDone ? (
+                    <div className="celebration-icon">🏆</div>
+                  ) : (
+                    <>
+                      <div className="frac">
+                        <span>{orbitFraction.done}</span>
+                        <span className="denom">/<span>{orbitFraction.total}</span></span>
+                      </div>
+                      <div className="lbl">in orbit</div>
+                    </>
+                  )}
                 </div>
 
                 {/* Manual planets around the ring */}
                 {applicable.map((h, i) => {
                   const N = applicable.length
-                  const angle = -Math.PI/2 + (i / N) * Math.PI * 2
-                  const orbitR = 110
+                  const baseAngle = -Math.PI/2 + (i / N) * Math.PI * 2
+
+                  let angle = baseAngle, rMult = 1, opacity = 1, scale = 1, hidden = false
+                  if (celebPhase === 'hidden') hidden = true
+                  else if (celebPhase === 'swallow') {
+                    const t = animT
+                    angle = baseAngle + t * t * Math.PI * 8
+                    if (t < 0.45) rMult = 1 + (t / 0.45) * 0.35
+                    else { const t2 = (t - 0.45) / 0.55; rMult = Math.max(0, 1.35 * (1 - t2 * t2)) }
+                    const fadeT = Math.max(0, (t - 0.55) / 0.45)
+                    opacity = 1 - fadeT * fadeT
+                    scale = 1 - fadeT * 0.6
+                  } else if (celebPhase === 'eject') {
+                    const t = animT
+                    const eased = 1 - Math.pow(1 - t, 3)
+                    rMult = eased
+                    opacity = Math.min(1, t * 2)
+                    scale = 0.3 + 0.7 * eased
+                  }
+                  const orbitR = 110 * rMult
                   const x = 140 + Math.cos(angle) * orbitR
                   const y = 140 + Math.sin(angle) * orbitR
                   const isDone = readHabit(date, h.key)
                   const pressStart = () => {
+                    if (celebPhase !== 'orbit') return
                     if (longPressRef.current) clearTimeout(longPressRef.current)
                     longPressRef.current = setTimeout(() => {
                       setHabitDetail(h)
@@ -648,21 +742,30 @@ function App() {
                     }, 1000)
                   }
                   const pressEnd = () => {
+                    if (celebPhase !== 'orbit') return
                     if (longPressRef.current) {
                       clearTimeout(longPressRef.current)
                       longPressRef.current = null
                       updateHabit(h.key, !isDone)
                     }
-                    // If long-press already fired, detail stays until outside click
                   }
                   const pressCancel = () => {
                     if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
                   }
+                  if (hidden) return null
                   return (
                     <div
                       key={h.key}
                       className={`planet ${isDone ? 'done' : 'pending'}`}
-                      style={{ '--c': h.color, left: x + 'px', top: y + 'px' }}
+                      style={{
+                        '--c': h.color,
+                        left: x + 'px',
+                        top: y + 'px',
+                        opacity,
+                        transform: `translate(-50%, -50%) scale(${scale})`,
+                        transition: celebPhase === 'orbit' ? undefined : 'none',
+                        pointerEvents: celebPhase === 'orbit' ? 'auto' : 'none'
+                      }}
                       onPointerDown={pressStart}
                       onPointerUp={pressEnd}
                       onPointerLeave={pressCancel}
@@ -1027,7 +1130,7 @@ function JourneyPanel({ entries, phases, sortedDates: allDates }) {
     labels,
     datasets: [{ data: vals, borderColor: color, backgroundColor: hexToRgba(color, 0.12), fill: true }]
   })
-  const journeyOpts = (extraScales) => baseChartOpts(extraScales, phaseBands)
+  const journeyOpts = (extraScales) => baseChartOpts(extraScales, phaseBands, sortedDates)
 
   return (
     <>
@@ -1244,6 +1347,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
 
   const labels = phaseKeys.map(k => k.slice(5))
   const canvasW = 337
+  const phaseOpts = (extraScales) => baseChartOpts(extraScales, undefined, phaseKeys)
   const phaseWts = phaseKeys.map(k => parseFloat(entries[k]?.weight) || null)
   const pFatMass = phaseKeys.map(k => { const w = parseFloat(entries[k]?.weight), bf = parseFloat(entries[k]?.bodyFat); return (!isNaN(w) && !isNaN(bf)) ? +(w * bf / 100).toFixed(1) : null })
   const pMusMass = phaseKeys.map(k => { const w = parseFloat(entries[k]?.weight), mu = parseFloat(entries[k]?.musclePct); return (!isNaN(w) && !isNaN(mu)) ? +(w * mu / 100).toFixed(1) : null })
@@ -1367,7 +1471,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
               { data: phaseWts.map(() => fW), borderColor: '#45475a', borderDash: [4, 4], borderWidth: 1, fill: false, pointRadius: 0 },
             ]
           }}
-          options={baseChartOpts()}
+          options={phaseOpts()}
           width={canvasW} height={120}
           style={{ width: canvasW, height: 120 }}
           renderHead={(idx) => {
@@ -1390,7 +1494,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
           }}
           options={(() => {
             const fv = pFatMass.filter(v => v !== null), mv = pMusMass.filter(v => v !== null)
-            if (!fv.length || !mv.length) return baseChartOpts({
+            if (!fv.length || !mv.length) return phaseOpts({
               y:  { position: 'left',  ticks: { color: '#fab387', font: { size: 9 } }, grid: { color: '#313244' } },
               y2: { position: 'right', ticks: { color: '#a6e3a1', font: { size: 9 } }, grid: { display: false } },
             })
@@ -1399,7 +1503,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
             const range = Math.max(fMax - fMin, mMax - mMin, 2)
             const pad = range * 0.15
             const fCenter = (fMin + fMax) / 2, mCenter = (mMin + mMax) / 2
-            return baseChartOpts({
+            return phaseOpts({
               y:  { position: 'left',  min: fCenter - range/2 - pad, max: fCenter + range/2 + pad, ticks: { color: '#fab387', font: { size: 9 } }, grid: { color: '#313244' } },
               y2: { position: 'right', min: mCenter - range/2 - pad, max: mCenter + range/2 + pad, ticks: { color: '#a6e3a1', font: { size: 9 } }, grid: { display: false } },
             })
@@ -1417,7 +1521,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
       <div className="chart-card">
         <ScrubbableLine
           data={{ labels, datasets: [{ data: pBfVals, borderColor: '#fab387', backgroundColor: hexToRgba('#fab387', 0.2), fill: true }] }}
-          options={baseChartOpts()}
+          options={phaseOpts()}
           width={canvasW} height={120}
           style={{ width: canvasW, height: 120 }}
           renderHead={(idx) => {
@@ -1430,7 +1534,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
       <div className="chart-card">
         <ScrubbableLine
           data={{ labels, datasets: [{ data: pMuVals, borderColor: '#a6e3a1', backgroundColor: hexToRgba('#a6e3a1', 0.2), fill: true }] }}
-          options={baseChartOpts()}
+          options={phaseOpts()}
           width={canvasW} height={120}
           style={{ width: canvasW, height: 120 }}
           renderHead={(idx) => {
@@ -1443,7 +1547,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
       <div className="chart-card">
         <ScrubbableLine
           data={{ labels, datasets: [{ data: pViVals, borderColor: '#cba6f7', backgroundColor: hexToRgba('#cba6f7', 0.2), fill: true }] }}
-          options={{ ...baseChartOpts(), scales: { x: { ticks: { color: '#6c7086', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } }, y: { ticks: { color: '#6c7086', font: { size: 9 }, stepSize: 1 }, grid: { color: '#313244' }, suggestedMin: 0, suggestedMax: 8 } } }}
+          options={{ ...phaseOpts(), scales: { x: { ticks: { color: '#6c7086', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } }, y: { ticks: { color: '#6c7086', font: { size: 9 }, stepSize: 1 }, grid: { color: '#313244' }, suggestedMin: 0, suggestedMax: 8 } } }}
           width={canvasW} height={90}
           style={{ width: canvasW, height: 90 }}
           renderHead={(idx) => {
