@@ -25,10 +25,6 @@ const METRICS = [
   { key: 'visceralFat', label: 'Visceral', unit: '', color: '#cba6f7', step: 1 }
 ]
 
-// D3+K2 runs every-other-day anchored on 2026-04-18
-const D3K2_ANCHOR = new Date(2026, 3, 18)
-const dayDiff = (d) => Math.round((d - D3K2_ANCHOR) / 86400000)
-
 const ORBIT_HABITS = [
   { key: 'morning', icon: '🧘', name: 'Morning', color: '#f9e2af',
     applies: () => true,
@@ -42,7 +38,14 @@ const ORBIT_HABITS = [
     applies: () => true,
     details: ['Creatine', '1x Base Powder', '2x Omega 3'] },
   { key: 'd3k2', icon: '💊', name: 'D3+K2', color: '#f5c2e7',
-    applies: d => dayDiff(d) % 2 === 0,
+    // Alternates based on yesterday's tracking: if yesterday had no D3+K2, show today
+    applies: (_d, dateStr, entries) => {
+      if (!entries) return true
+      const yKey = addDays(dateStr, -1)
+      const yEntry = entries[yKey]
+      if (!yEntry) return true
+      return !yEntry.habits?.d3k2
+    },
     details: ['1x D3+K2'] },
   { key: 'supsPM', icon: '🌙', name: 'Sups PM', color: '#b4befe',
     applies: () => true,
@@ -80,9 +83,9 @@ function formatDateLabel(s) {
   return `${DAY_NAMES[d.getDay()]} ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`
 }
 
-function habitApplies(h, dateStr) {
+function habitApplies(h, dateStr, entries) {
   const d = new Date(dateStr + 'T12:00:00')
-  return h.applies(d)
+  return h.applies(d, dateStr, entries)
 }
 
 function getPhaseColor(name) {
@@ -524,7 +527,7 @@ function App() {
   }, [entries, autoHabitsByDate])
 
   // ---- Computed: Orbit (manual only — auto habits are stats-only) ----
-  const applicable = useMemo(() => ORBIT_HABITS.filter(h => !h.auto && habitApplies(h, date)), [date])
+  const applicable = useMemo(() => ORBIT_HABITS.filter(h => !h.auto && habitApplies(h, date, entries)), [date, entries])
 
   const orbitFraction = useMemo(() => {
     const done = applicable.filter(h => readHabit(date, h.key)).length
@@ -541,7 +544,7 @@ function App() {
       for (let i = 20; i >= 0; i--) {
         const d = addDays(todayKey, -i)
         const isTodayDot = i === 0
-        const appl = habitApplies(h, d)
+        const appl = habitApplies(h, d, entries)
         let val = null
         if (appl) {
           if (h.auto) val = !!autoHabitsByDate[d]?.[h.key]
@@ -568,7 +571,7 @@ function App() {
     return ORBIT_HABITS.map(h => {
       let done = 0, total = 0
       sortedDates.forEach(k => {
-        if (!habitApplies(h, k)) return
+        if (!habitApplies(h, k, entries)) return
         const v = h.auto ? !!autoHabitsByDate[k]?.[h.key] : !!ensureHabits(entries[k]).habits?.[h.key]
         total++
         if (v) done++
