@@ -770,6 +770,104 @@ function App() {
 
 
 // ====================================================================
+// SCRUBBABLE LINE — touch/swipe highlights nearest point, shows val + date
+// ====================================================================
+function ScrubbableLine({ data, options, width, height, style, renderHead }) {
+  const chartRef = useRef(null)
+  const selRef = useRef(null)
+  const [sel, setSel] = useState(null)
+
+  const pickIdx = (clientX) => {
+    const chart = chartRef.current
+    if (!chart) return null
+    const rect = chart.canvas.getBoundingClientRect()
+    const x = clientX - rect.left
+    const scale = chart.scales.x
+    if (!scale) return null
+    const n = chart.data.labels.length
+    let best = 0, bestDist = Infinity
+    for (let i = 0; i < n; i++) {
+      const px = scale.getPixelForValue(i)
+      const d = Math.abs(px - x)
+      if (d < bestDist) { bestDist = d; best = i }
+    }
+    return best
+  }
+
+  const updateSel = (idx) => {
+    if (idx == null || idx === selRef.current) return
+    selRef.current = idx
+    setSel(idx)
+    chartRef.current?.update('none')
+  }
+
+  const onTouchStart = (e) => {
+    const t = e.touches?.[0]
+    if (t) updateSel(pickIdx(t.clientX))
+  }
+  const onTouchMove = (e) => {
+    const t = e.touches?.[0]
+    if (!t) return
+    e.preventDefault()
+    updateSel(pickIdx(t.clientX))
+  }
+
+  const scrubPlugin = useMemo(() => ({
+    id: 'scrub',
+    afterDatasetsDraw(chart) {
+      const idx = selRef.current
+      if (idx == null) return
+      const { ctx, chartArea, scales } = chart
+      const x = scales.x.getPixelForValue(idx)
+      ctx.save()
+      ctx.strokeStyle = 'rgba(137, 180, 250, 0.55)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([3, 3])
+      ctx.beginPath()
+      ctx.moveTo(x, chartArea.top)
+      ctx.lineTo(x, chartArea.bottom)
+      ctx.stroke()
+      ctx.setLineDash([])
+      chart.data.datasets.forEach((ds, i) => {
+        const meta = chart.getDatasetMeta(i)
+        const pt = meta.data[idx]
+        if (!pt) return
+        ctx.beginPath()
+        ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2)
+        ctx.fillStyle = ds.borderColor
+        ctx.fill()
+        ctx.strokeStyle = '#1e1e2e'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      })
+      ctx.restore()
+    }
+  }), [])
+
+  return (
+    <>
+      {renderHead(sel)}
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        style={{ touchAction: 'pan-y' }}
+      >
+        <Line
+          ref={chartRef}
+          data={data}
+          options={options}
+          width={width}
+          height={height}
+          style={style}
+          plugins={[scrubPlugin]}
+        />
+      </div>
+    </>
+  )
+}
+
+
+// ====================================================================
 // JOURNEY PANEL
 // ====================================================================
 function JourneyPanel({ entries, phases, sortedDates: allDates }) {
@@ -842,21 +940,22 @@ function JourneyPanel({ entries, phases, sortedDates: allDates }) {
 
       <div className="stat-section-title">Weight trajectory</div>
       <div className="chart-card">
-        <div className="card-head">Weight <span className="v">{lastW.toFixed(1)} kg</span></div>
-        <Line
+        <ScrubbableLine
           data={makeData(wts, '#f38ba8', 140)}
           options={journeyOpts()}
           width={canvasW} height={140}
           style={{ width: canvasW, height: 140 }}
+          renderHead={(idx) => {
+            const i = idx ?? wts.map((v,j)=>v!=null?j:-1).filter(j=>j>=0).pop() ?? sortedDates.length - 1
+            const v = wts[i]
+            return <div className="card-head">Weight <span className="v">{v != null ? v.toFixed(1) : '--'} kg {idx != null && <span className="d">{sortedDates[i]}</span>}</span></div>
+          }}
         />
       </div>
 
       <div className="stat-section-title">Body composition</div>
       <div className="chart-card">
-        <div className="card-head">Fat vs Lean Mass (kg) <span className="v">
-          {fatMass.filter(v=>v!==null).length > 0 ? fatMass.filter(v=>v!==null).pop()?.toFixed(1) : '--'} / {muMass.filter(v=>v!==null).length > 0 ? muMass.filter(v=>v!==null).pop()?.toFixed(1) : '--'}
-        </span></div>
-        <Line
+        <ScrubbableLine
           data={{
             labels,
             datasets: [
@@ -878,20 +977,45 @@ function JourneyPanel({ entries, phases, sortedDates: allDates }) {
           })()}
           width={canvasW} height={140}
           style={{ width: canvasW, height: 140 }}
+          renderHead={(idx) => {
+            const pickLast = (arr) => { for (let j = arr.length - 1; j >= 0; j--) if (arr[j] != null) return j; return arr.length - 1 }
+            const i = idx ?? pickLast(fatMass)
+            const f = fatMass[i], m = muMass[i]
+            return <div className="card-head">Fat vs Lean (kg) <span className="v">{f != null ? f.toFixed(1) : '--'} / {m != null ? m.toFixed(1) : '--'} {idx != null && <span className="d">{sortedDates[i]}</span>}</span></div>
+          }}
         />
       </div>
 
       <div className="chart-card">
-        <div className="card-head">Body Fat % <span className="v">{lastBf.toFixed(1)}%</span></div>
-        <Line data={makeData(bfs, '#fab387', 120)} options={journeyOpts()} width={canvasW} height={120} style={{ width: canvasW, height: 120 }} />
+        <ScrubbableLine
+          data={makeData(bfs, '#fab387', 120)}
+          options={journeyOpts()}
+          width={canvasW} height={120}
+          style={{ width: canvasW, height: 120 }}
+          renderHead={(idx) => {
+            const pickLast = (arr) => { for (let j = arr.length - 1; j >= 0; j--) if (arr[j] != null) return j; return arr.length - 1 }
+            const i = idx ?? pickLast(bfs)
+            const v = bfs[i]
+            return <div className="card-head">Body Fat % <span className="v">{v != null ? v.toFixed(1) : '--'}% {idx != null && <span className="d">{sortedDates[i]}</span>}</span></div>
+          }}
+        />
       </div>
       <div className="chart-card">
-        <div className="card-head">Muscle % <span className="v">{lastMu.toFixed(1)}%</span></div>
-        <Line data={makeData(mus, '#a6e3a1', 120)} options={journeyOpts()} width={canvasW} height={120} style={{ width: canvasW, height: 120 }} />
+        <ScrubbableLine
+          data={makeData(mus, '#a6e3a1', 120)}
+          options={journeyOpts()}
+          width={canvasW} height={120}
+          style={{ width: canvasW, height: 120 }}
+          renderHead={(idx) => {
+            const pickLast = (arr) => { for (let j = arr.length - 1; j >= 0; j--) if (arr[j] != null) return j; return arr.length - 1 }
+            const i = idx ?? pickLast(mus)
+            const v = mus[i]
+            return <div className="card-head">Muscle % <span className="v">{v != null ? v.toFixed(1) : '--'}% {idx != null && <span className="d">{sortedDates[i]}</span>}</span></div>
+          }}
+        />
       </div>
       <div className="chart-card">
-        <div className="card-head">Visceral Fat <span className="v">{vis.filter(v=>v!==null).pop() ?? '--'}</span></div>
-        <Line
+        <ScrubbableLine
           data={makeData(vis, '#cba6f7', 90)}
           options={{
             ...journeyOpts(),
@@ -899,6 +1023,12 @@ function JourneyPanel({ entries, phases, sortedDates: allDates }) {
           }}
           width={canvasW} height={90}
           style={{ width: canvasW, height: 90 }}
+          renderHead={(idx) => {
+            const pickLast = (arr) => { for (let j = arr.length - 1; j >= 0; j--) if (arr[j] != null) return j; return arr.length - 1 }
+            const i = idx ?? pickLast(vis)
+            const v = vis[i]
+            return <div className="card-head">Visceral Fat <span className="v">{v ?? '--'} {idx != null && <span className="d">{sortedDates[i]}</span>}</span></div>
+          }}
         />
       </div>
       <MeasurementsTable entries={entries} dates={sortedDates} />

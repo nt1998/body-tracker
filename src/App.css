@@ -655,6 +655,13 @@ body:has(textarea:focus) .tabbar {
   text-transform: none;
   letter-spacing: 0;
 }
+.chart-card .card-head .d {
+  color: #89b4fa;
+  font-weight: 500;
+  font-size: 11px;
+  margin-left: 6px;
+  letter-spacing: 0;
+}
 
 /* Delta badges */
 .delta-badge {
