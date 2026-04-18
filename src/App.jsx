@@ -772,7 +772,9 @@ function App() {
 // ====================================================================
 // JOURNEY PANEL
 // ====================================================================
-function JourneyPanel({ entries, phases, sortedDates }) {
+function JourneyPanel({ entries, phases, sortedDates: allDates }) {
+  const firstPhaseStart = phases.length > 0 ? phases.map(p => p.start).sort()[0] : null
+  const sortedDates = firstPhaseStart ? allDates.filter(d => d >= firstPhaseStart) : allDates
   if (sortedDates.length === 0) return <div style={{ color: '#45475a', textAlign: 'center', padding: 40 }}>No data yet</div>
 
   const firstKey = sortedDates[0]
