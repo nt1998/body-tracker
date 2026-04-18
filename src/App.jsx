@@ -25,19 +25,40 @@ const METRICS = [
   { key: 'visceralFat', label: 'Visceral', unit: '', color: '#cba6f7', step: 1 }
 ]
 
+// D3+K2 runs every-other-day anchored on 2026-04-18
+const D3K2_ANCHOR = new Date(2026, 3, 18)
+const dayDiff = (d) => Math.round((d - D3K2_ANCHOR) / 86400000)
+
 const ORBIT_HABITS = [
-  { key: 'am5',     icon: '🧍', name: '5-min AM', color: '#f9e2af',
-    applies: () => true },
-  { key: 'supsAM',  icon: '☀️', name: 'AM Sups',  color: '#cba6f7',
-    applies: () => true },
-  { key: 'supsPM',  icon: '🌙', name: 'PM Sups',  color: '#b4befe',
-    applies: () => true },
-  { key: 'cardio',  icon: '🫀', name: 'Cardio',   color: '#89dceb',
-    applies: d => d.getDay() !== 6 },
-  { key: 'stretch', icon: '🧘', name: 'Stretch',  color: '#a6e3a1',
-    applies: d => [3,6,0].includes(d.getDay()) },
-  { key: 'calisthenics', icon: '🤸', name: 'Cali', color: '#fab387',
-    applies: d => d.getDay() === 6 },
+  { key: 'morning', icon: '🌅', name: 'Morning', color: '#f9e2af',
+    applies: () => true,
+    details: [
+      'Ankle Circles (Ankle CARs)',
+      'Hip Circles (Hip CARs)',
+      'Arch Squeeze (Short Foot, 30s each foot)',
+      'Deep Squat Sit (Deep Squat Hold, 60s)'
+    ] },
+  { key: 'supsAM', icon: '☀️', name: 'Sups AM', color: '#cba6f7',
+    applies: () => true,
+    details: ['Creatine 5g', 'Base Powder 1 scoop', 'Omega-3 2 caps'] },
+  { key: 'd3k2', icon: '💊', name: 'D3+K2', color: '#f5c2e7',
+    applies: d => dayDiff(d) % 2 === 0,
+    details: ['1 tablet (5000 IU D3 + 100µg K2)', 'With fatty breakfast'] },
+  { key: 'supsPM', icon: '🌙', name: 'Sups PM', color: '#b4befe',
+    applies: () => true,
+    details: ['Magnesium 1 cap (300mg)', 'Omega-3 2 caps', 'Before bed'] },
+  { key: 'gymPush', icon: '💪', name: 'Push', color: '#f38ba8',
+    applies: d => [1, 4].includes(d.getDay()), auto: true,
+    details: ['Mon & Thu', 'Auto from gym tracker'] },
+  { key: 'gymPull', icon: '🏋️', name: 'Pull', color: '#fab387',
+    applies: d => [2, 5].includes(d.getDay()), auto: true,
+    details: ['Tue & Fri', 'Auto from gym tracker'] },
+  { key: 'hiit', icon: '🫀', name: 'HIIT', color: '#89dceb',
+    applies: d => [3, 0].includes(d.getDay()),
+    details: ['Wed & Sun · 20 min'] },
+  { key: 'rehab', icon: '🧘', name: 'Rehab', color: '#a6e3a1',
+    applies: d => [3, 6, 0].includes(d.getDay()), auto: true,
+    details: ['Wed, Sat, Sun · ~25 min', 'Auto from gym tracker'] },
 ]
 
 const DAY_NAMES = ['SUN','MON','TUE','WED','THU','FRI','SAT']
@@ -87,7 +108,7 @@ function hexToRgba(hex, a) {
 }
 
 function makeEmptyHabits() {
-  return { am5: false, supsAM: false, supsPM: false, lift: false, cardio: false, stretch: false, calisthenics: false }
+  return { morning: false, supsAM: false, d3k2: false, supsPM: false, gymPush: false, gymPull: false, hiit: false, rehab: false }
 }
 
 function makeEmptyEntry(prev) {
@@ -102,13 +123,24 @@ function makeEmptyEntry(prev) {
 
 function ensureHabits(entry) {
   if (!entry) return entry
+  const base = makeEmptyHabits()
   if (!entry.habits) {
-    const habits = makeEmptyHabits()
-    if (entry.creatine || entry.vitamins) habits.supsAM = !!(entry.creatine && entry.vitamins)
-    if (entry.cycle) habits.cardio = true
-    return { ...entry, habits }
+    if (entry.creatine || entry.vitamins) base.supsAM = !!(entry.creatine && entry.vitamins)
+    return { ...entry, habits: base }
   }
-  return entry
+  const h = entry.habits
+  const migrated = {
+    ...base,
+    morning: h.morning ?? h.am5 ?? false,
+    supsAM: h.supsAM ?? false,
+    d3k2: h.d3k2 ?? false,
+    supsPM: h.supsPM ?? false,
+    gymPush: h.gymPush ?? false,
+    gymPull: h.gymPull ?? false,
+    hiit: h.hiit ?? h.cardio ?? false,
+    rehab: h.rehab ?? h.stretch ?? false,
+  }
+  return { ...entry, habits: migrated }
 }
 
 // Phase band plugin for Chart.js — draws colored vertical bands behind chart data
@@ -212,8 +244,11 @@ function App() {
   const [phaseModal, setPhaseModal] = useState(null)
   const [statsPhaseIdx, setStatsPhaseIdx] = useState(-1) // -1 = current
   const [ghExpanded, setGhExpanded] = useState(false)
+  const [gymWorkouts, setGymWorkouts] = useState({})
+  const [habitDetail, setHabitDetail] = useState(null)
   const syncTimeoutRef = useRef(null)
   const dateInputRef = useRef(null)
+  const longPressRef = useRef(null)
 
   const todayKey = dateKey(new Date())
   const isToday = date === todayKey
@@ -242,6 +277,8 @@ function App() {
     if (savedEntries) setEntries(JSON.parse(savedEntries))
     const savedPhases = localStorage.getItem('bodytracker_phases')
     if (savedPhases) setPhases(JSON.parse(savedPhases))
+    const savedGym = localStorage.getItem('bodytracker_gymworkouts')
+    if (savedGym) setGymWorkouts(JSON.parse(savedGym))
     const savedLastSync = localStorage.getItem('bodytracker_lastsync')
     if (savedLastSync) setLastSyncTime(parseInt(savedLastSync))
     const savedGithub = localStorage.getItem('bodytracker_github')
@@ -304,6 +341,16 @@ function App() {
         setLastSyncTime(Date.now())
         localStorage.setItem('bodytracker_lastsync', Date.now().toString())
       }
+      // Also pull gym.json so auto-tracked habits (push/pull/rehab) reflect gym-tracker state
+      try {
+        const gymRes = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/contents/gym.json`, { headers: { Authorization: `token ${gh.token}` } })
+        if (gymRes.ok) {
+          const f = await gymRes.json()
+          const gymData = JSON.parse(decodeURIComponent(escape(atob(f.content))))
+          setGymWorkouts(gymData.workouts || {})
+          localStorage.setItem('bodytracker_gymworkouts', JSON.stringify(gymData.workouts || {}))
+        }
+      } catch { /* gym.json optional */ }
     } catch (e) { console.error('Auto-load failed:', e) }
   }
 
@@ -394,13 +441,6 @@ function App() {
     setNeedsSync(true)
   }, [])
 
-  const currentEntry = useMemo(() => {
-    const e = entries[date]
-    if (e) return ensureHabits(e)
-    // Pre-fill from yesterday
-    const yest = entries[addDays(date, -1)]
-    return makeEmptyEntry(yest)
-  }, [entries, date])
 
   const entryRecorded = !!entries[date]
 
@@ -460,19 +500,34 @@ function App() {
     saveAll(entries, newPhases)
   }
 
+  // ---- Auto habits derived from gym workouts ----
+  const autoHabitsByDate = useMemo(() => {
+    const out = {}
+    Object.entries(gymWorkouts).forEach(([d, w]) => {
+      if (!w?.committed) return
+      const h = {}
+      if (w.routineType === 'push') h.gymPush = true
+      if (w.routineType === 'pull') h.gymPull = true
+      if (w.routineType === 'rest') h.rehab = true
+      out[d] = h
+    })
+    return out
+  }, [gymWorkouts])
+
+  const readHabit = useCallback((d, key) => {
+    const isAuto = ORBIT_HABITS.find(h => h.key === key)?.auto
+    if (isAuto) return !!autoHabitsByDate[d]?.[key]
+    const ent = entries[d] ? ensureHabits(entries[d]) : null
+    return !!ent?.habits?.[key]
+  }, [entries, autoHabitsByDate])
+
   // ---- Computed: Orbit ----
-  const { manualApplicable, autoApplicable, naHabits } = useMemo(() => {
-    const manual = ORBIT_HABITS.filter(h => habitApplies(h, date) && !h.auto)
-    const auto = ORBIT_HABITS.filter(h => habitApplies(h, date) && h.auto)
-    const na = ORBIT_HABITS.filter(h => !habitApplies(h, date))
-    return { manualApplicable: manual, autoApplicable: auto, naHabits: na }
-  }, [date])
+  const applicable = useMemo(() => ORBIT_HABITS.filter(h => habitApplies(h, date)), [date])
 
   const orbitFraction = useMemo(() => {
-    const all = ORBIT_HABITS.filter(h => habitApplies(h, date))
-    const done = all.filter(h => currentEntry.habits?.[h.key]).length
-    return { done, total: all.length }
-  }, [date, currentEntry])
+    const done = applicable.filter(h => readHabit(date, h.key)).length
+    return { done, total: applicable.length }
+  }, [date, applicable, readHabit])
 
   // ---- Computed: sorted dates ----
   const sortedDates = useMemo(() => Object.keys(entries).sort(), [entries])
@@ -485,8 +540,14 @@ function App() {
         const d = addDays(todayKey, -i)
         const isTodayDot = i === 0
         const appl = habitApplies(h, d)
-        const ent = entries[d] ? ensureHabits(entries[d]) : null
-        const val = ent ? ent.habits?.[h.key] : null
+        let val = null
+        if (appl) {
+          if (h.auto) val = !!autoHabitsByDate[d]?.[h.key]
+          else {
+            const ent = entries[d] ? ensureHabits(entries[d]) : null
+            val = ent ? !!ent.habits?.[h.key] : null
+          }
+        }
         let cls = 'dot'
         if (!appl || val === null || val === undefined) cls += ' na'
         else {
@@ -498,21 +559,22 @@ function App() {
       }
       return { ...h, dots }
     })
-  }, [entries, todayKey])
+  }, [entries, todayKey, autoHabitsByDate])
 
   // ---- Computed: habit compliance (all time) ----
   const habitScores = useMemo(() => {
     return ORBIT_HABITS.map(h => {
       let done = 0, total = 0
       sortedDates.forEach(k => {
-        const e = ensureHabits(entries[k])
-        const v = e.habits?.[h.key]
-        if (v !== null && v !== undefined) { total++; if (v) done++ }
+        if (!habitApplies(h, k)) return
+        const v = h.auto ? !!autoHabitsByDate[k]?.[h.key] : !!ensureHabits(entries[k]).habits?.[h.key]
+        total++
+        if (v) done++
       })
       const pct = total > 0 ? done / total : 0
       return { ...h, pct, done, total }
     })
-  }, [entries, sortedDates])
+  }, [entries, sortedDates, autoHabitsByDate])
 
   // ---- Display value helper ----
   const getDisplayValue = (field) => {
@@ -565,20 +627,43 @@ function App() {
                   <div className="lbl">in orbit</div>
                 </div>
 
-                {/* Manual planets around the ring */}
-                {manualApplicable.map((h, i) => {
-                  const N = manualApplicable.length
+                {/* All applicable planets around the ring (auto ones are read-only) */}
+                {applicable.map((h, i) => {
+                  const N = applicable.length
                   const angle = -Math.PI/2 + (i / N) * Math.PI * 2
                   const orbitR = 110
                   const x = 140 + Math.cos(angle) * orbitR
                   const y = 140 + Math.sin(angle) * orbitR
-                  const isDone = currentEntry.habits?.[h.key]
+                  const isDone = readHabit(date, h.key)
+                  const pressStart = () => {
+                    if (longPressRef.current) clearTimeout(longPressRef.current)
+                    longPressRef.current = setTimeout(() => {
+                      setHabitDetail(h)
+                      longPressRef.current = null
+                    }, 2000)
+                  }
+                  const pressEnd = () => {
+                    if (longPressRef.current) {
+                      clearTimeout(longPressRef.current)
+                      longPressRef.current = null
+                      if (!h.auto) updateHabit(h.key, !isDone)
+                    } else {
+                      setHabitDetail(null)
+                    }
+                  }
+                  const pressCancel = () => {
+                    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
+                    setHabitDetail(null)
+                  }
                   return (
                     <div
                       key={h.key}
-                      className={`planet ${isDone ? 'done' : 'pending'}`}
+                      className={`planet ${isDone ? 'done' : 'pending'} ${h.auto ? 'auto' : ''}`}
                       style={{ '--c': h.color, left: x + 'px', top: y + 'px' }}
-                      onClick={() => updateHabit(h.key, !isDone)}
+                      onPointerDown={pressStart}
+                      onPointerUp={pressEnd}
+                      onPointerLeave={pressCancel}
+                      onPointerCancel={pressCancel}
                     >
                       <div className="p-icon">{h.icon}</div>
                       <div className="p-name">{h.name}</div>
@@ -722,6 +807,19 @@ function App() {
           </>
         )}
       </main>
+
+      {/* ---- Habit detail panel (long-press) ---- */}
+      {habitDetail && (
+        <div className="habit-detail" style={{ '--c': habitDetail.color }}>
+          <div className="hd-title">
+            <span className="hd-icon">{habitDetail.icon}</span>
+            <span>{habitDetail.name}</span>
+          </div>
+          {(habitDetail.details || []).map((line, i) => (
+            <div key={i} className="hd-line">{line}</div>
+          ))}
+        </div>
+      )}
 
       {/* ---- Tab bar ---- */}
       <nav className="tabbar">

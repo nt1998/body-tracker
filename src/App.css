@@ -67,6 +67,58 @@ body:has(textarea:focus) .tabbar {
 }
 
 /* ============================
+   HABIT DETAIL (long-press)
+   ============================ */
+.habit-detail {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 110px;
+  padding: 14px 16px;
+  background: #181825;
+  border: 1px solid var(--c, #45475a);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.02) inset;
+  z-index: 99;
+  pointer-events: none;
+  animation: hdFade 0.12s ease-out;
+}
+.habit-detail .hd-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c, #cdd6f4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.habit-detail .hd-icon { font-size: 16px; }
+.habit-detail .hd-line {
+  font-size: 13px;
+  color: #cdd6f4;
+  line-height: 1.5;
+  padding: 2px 0;
+}
+@keyframes hdFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.planet.auto::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c);
+  opacity: 0.6;
+}
+.planet { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+
+/* ============================
    TAB BAR — floating circles
    ============================ */
 .tabbar {
