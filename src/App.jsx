@@ -157,7 +157,7 @@ function baseChartOpts(extraScales, phaseBands) {
       ...(phaseBands ? { phaseBands: { bands: phaseBands } } : {})
     },
     scales: {
-      x: { display: false },
+      x: { ticks: { color: '#6c7086', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } },
       y: { ticks: { color: '#6c7086', font: { size: 9 } }, grid: { color: '#313244' } },
       ...extraScales
     },
