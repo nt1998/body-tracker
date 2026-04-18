@@ -30,7 +30,7 @@ const D3K2_ANCHOR = new Date(2026, 3, 18)
 const dayDiff = (d) => Math.round((d - D3K2_ANCHOR) / 86400000)
 
 const ORBIT_HABITS = [
-  { key: 'morning', icon: '🌅', name: 'Morning', color: '#f9e2af',
+  { key: 'morning', icon: '🧘', name: 'Morning', color: '#f9e2af',
     applies: () => true,
     details: [
       'Ankle Circles (Ankle CARs)',
@@ -40,25 +40,15 @@ const ORBIT_HABITS = [
     ] },
   { key: 'supsAM', icon: '☀️', name: 'Sups AM', color: '#cba6f7',
     applies: () => true,
-    details: ['Creatine 5g', 'Base Powder 1 scoop', 'Omega-3 2 caps'] },
+    details: ['Creatine', '1x Base Powder', '2x Omega 3'] },
   { key: 'd3k2', icon: '💊', name: 'D3+K2', color: '#f5c2e7',
     applies: d => dayDiff(d) % 2 === 0,
-    details: ['1 tablet (5000 IU D3 + 100µg K2)', 'With fatty breakfast'] },
+    details: ['1x D3+K2'] },
   { key: 'supsPM', icon: '🌙', name: 'Sups PM', color: '#b4befe',
     applies: () => true,
-    details: ['Magnesium 1 cap (300mg)', 'Omega-3 2 caps', 'Before bed'] },
-  { key: 'gymPush', icon: '💪', name: 'Push', color: '#f38ba8',
-    applies: d => [1, 4].includes(d.getDay()), auto: true,
-    details: ['Mon & Thu', 'Auto from gym tracker'] },
-  { key: 'gymPull', icon: '🏋️', name: 'Pull', color: '#fab387',
-    applies: d => [2, 5].includes(d.getDay()), auto: true,
-    details: ['Tue & Fri', 'Auto from gym tracker'] },
+    details: ['1x Magnesium', '2x Omega 3'] },
   { key: 'hiit', icon: '🫀', name: 'HIIT', color: '#89dceb',
-    applies: d => [3, 0].includes(d.getDay()),
-    details: ['Wed & Sun · 20 min'] },
-  { key: 'rehab', icon: '🧘', name: 'Rehab', color: '#a6e3a1',
-    applies: d => [3, 6, 0].includes(d.getDay()), auto: true,
-    details: ['Wed, Sat, Sun · ~25 min', 'Auto from gym tracker'] },
+    applies: d => [3, 0].includes(d.getDay()) },
 ]
 
 const DAY_NAMES = ['SUN','MON','TUE','WED','THU','FRI','SAT']
@@ -270,6 +260,18 @@ function App() {
       window.removeEventListener('orientationchange', handle)
     }
   }, [])
+
+  // ---- Global tap-to-dismiss for habit detail panel ----
+  useEffect(() => {
+    if (!habitDetail) return
+    const onDown = (e) => {
+      setHabitDetail(null)
+      // Swallow this tap so it doesn't toggle a planet or hit any other handler
+      e.stopPropagation()
+    }
+    document.addEventListener('pointerdown', onDown, true)
+    return () => document.removeEventListener('pointerdown', onDown, true)
+  }, [habitDetail])
 
   // ---- Load from localStorage ----
   useEffect(() => {
@@ -521,8 +523,8 @@ function App() {
     return !!ent?.habits?.[key]
   }, [entries, autoHabitsByDate])
 
-  // ---- Computed: Orbit ----
-  const applicable = useMemo(() => ORBIT_HABITS.filter(h => habitApplies(h, date)), [date])
+  // ---- Computed: Orbit (manual only — auto habits are stats-only) ----
+  const applicable = useMemo(() => ORBIT_HABITS.filter(h => !h.auto && habitApplies(h, date)), [date])
 
   const orbitFraction = useMemo(() => {
     const done = applicable.filter(h => readHabit(date, h.key)).length
@@ -627,7 +629,7 @@ function App() {
                   <div className="lbl">in orbit</div>
                 </div>
 
-                {/* All applicable planets around the ring (auto ones are read-only) */}
+                {/* Manual planets around the ring */}
                 {applicable.map((h, i) => {
                   const N = applicable.length
                   const angle = -Math.PI/2 + (i / N) * Math.PI * 2
@@ -640,25 +642,23 @@ function App() {
                     longPressRef.current = setTimeout(() => {
                       setHabitDetail(h)
                       longPressRef.current = null
-                    }, 2000)
+                    }, 1000)
                   }
                   const pressEnd = () => {
                     if (longPressRef.current) {
                       clearTimeout(longPressRef.current)
                       longPressRef.current = null
-                      if (!h.auto) updateHabit(h.key, !isDone)
-                    } else {
-                      setHabitDetail(null)
+                      updateHabit(h.key, !isDone)
                     }
+                    // If long-press already fired, detail stays until outside click
                   }
                   const pressCancel = () => {
                     if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null }
-                    setHabitDetail(null)
                   }
                   return (
                     <div
                       key={h.key}
-                      className={`planet ${isDone ? 'done' : 'pending'} ${h.auto ? 'auto' : ''}`}
+                      className={`planet ${isDone ? 'done' : 'pending'}`}
                       style={{ '--c': h.color, left: x + 'px', top: y + 'px' }}
                       onPointerDown={pressStart}
                       onPointerUp={pressEnd}
