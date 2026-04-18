@@ -774,8 +774,25 @@ function App() {
 // ====================================================================
 function ScrubbableLine({ data, options, width, height, style, renderHead }) {
   const chartRef = useRef(null)
+  const wrapRef = useRef(null)
   const selRef = useRef(null)
   const [sel, setSel] = useState(null)
+
+  const clearSel = () => {
+    if (selRef.current == null) return
+    selRef.current = null
+    setSel(null)
+    chartRef.current?.update('none')
+  }
+
+  useEffect(() => {
+    const onDocDown = (e) => {
+      if (selRef.current == null) return
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) clearSel()
+    }
+    document.addEventListener('pointerdown', onDocDown)
+    return () => document.removeEventListener('pointerdown', onDocDown)
+  }, [])
 
   const pickIdx = (clientX) => {
     const chart = chartRef.current
@@ -848,6 +865,7 @@ function ScrubbableLine({ data, options, width, height, style, renderHead }) {
     <>
       {renderHead(sel)}
       <div
+        ref={wrapRef}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         style={{ touchAction: 'pan-y' }}
