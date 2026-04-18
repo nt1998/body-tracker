@@ -1249,6 +1249,8 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
   const pMusMass = phaseKeys.map(k => { const w = parseFloat(entries[k]?.weight), mu = parseFloat(entries[k]?.musclePct); return (!isNaN(w) && !isNaN(mu)) ? +(w * mu / 100).toFixed(1) : null })
   const pBfVals = phaseKeys.map(k => parseFloat(entries[k]?.bodyFat) || null)
   const pMuVals = phaseKeys.map(k => parseFloat(entries[k]?.musclePct) || null)
+  const pViVals = phaseKeys.map(k => parseFloat(entries[k]?.visceralFat) || null)
+  const pickLast = (arr) => { for (let j = arr.length - 1; j >= 0; j--) if (arr[j] != null) return j; return arr.length - 1 }
 
   // Streaks
   const streaks = ORBIT_HABITS.map(h => {
@@ -1357,8 +1359,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
       {/* Phase charts */}
       <div className="stat-section-title">Phase weight</div>
       <div className="chart-card">
-        <div className="card-head">Weight <span className="v">{lW.toFixed(1)} kg</span></div>
-        <Line
+        <ScrubbableLine
           data={{
             labels,
             datasets: [
@@ -1369,15 +1370,17 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
           options={baseChartOpts()}
           width={canvasW} height={120}
           style={{ width: canvasW, height: 120 }}
+          renderHead={(idx) => {
+            const i = idx ?? pickLast(phaseWts)
+            const v = phaseWts[i]
+            return <div className="card-head">Weight <span className="v">{v != null ? v.toFixed(1) : '--'} kg {idx != null && <span className="d">{phaseKeys[i]}</span>}</span></div>
+          }}
         />
       </div>
 
       <div className="stat-section-title">Phase body composition</div>
       <div className="chart-card">
-        <div className="card-head">Fat / Muscle Mass (kg) <span className="v">
-          {pFatMass.filter(v=>v!==null).pop()?.toFixed(1) || '--'} / {pMusMass.filter(v=>v!==null).pop()?.toFixed(1) || '--'}
-        </span></div>
-        <Line
+        <ScrubbableLine
           data={{
             labels,
             datasets: [
@@ -1403,28 +1406,52 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
           })()}
           width={canvasW} height={110}
           style={{ width: canvasW, height: 110 }}
+          renderHead={(idx) => {
+            const i = idx ?? pickLast(pFatMass)
+            const f = pFatMass[i], m = pMusMass[i]
+            return <div className="card-head">Fat / Muscle Mass (kg) <span className="v">{f != null ? f.toFixed(1) : '--'} / {m != null ? m.toFixed(1) : '--'} {idx != null && <span className="d">{phaseKeys[i]}</span>}</span></div>
+          }}
         />
       </div>
 
-      <div className="charts-row">
-        <div className="chart-card">
-          <div className="card-head">Body Fat % <span className="v">{lBf.toFixed(1)}%</span></div>
-          <Line
-            data={{ labels, datasets: [{ data: pBfVals, borderColor: '#fab387', backgroundColor: hexToRgba('#fab387', 0.2), fill: true }] }}
-            options={{ ...baseChartOpts(), scales: { x: { display: false }, y: { ticks: { color: '#6c7086', font: { size: 8 } }, grid: { color: '#313244' } } } }}
-            width={155} height={90}
-            style={{ width: 155, height: 90 }}
-          />
-        </div>
-        <div className="chart-card">
-          <div className="card-head">Muscle % <span className="v">{lMu.toFixed(1)}%</span></div>
-          <Line
-            data={{ labels, datasets: [{ data: pMuVals, borderColor: '#a6e3a1', backgroundColor: hexToRgba('#a6e3a1', 0.2), fill: true }] }}
-            options={{ ...baseChartOpts(), scales: { x: { display: false }, y: { ticks: { color: '#6c7086', font: { size: 8 } }, grid: { color: '#313244' } } } }}
-            width={155} height={90}
-            style={{ width: 155, height: 90 }}
-          />
-        </div>
+      <div className="chart-card">
+        <ScrubbableLine
+          data={{ labels, datasets: [{ data: pBfVals, borderColor: '#fab387', backgroundColor: hexToRgba('#fab387', 0.2), fill: true }] }}
+          options={baseChartOpts()}
+          width={canvasW} height={120}
+          style={{ width: canvasW, height: 120 }}
+          renderHead={(idx) => {
+            const i = idx ?? pickLast(pBfVals)
+            const v = pBfVals[i]
+            return <div className="card-head">Body Fat % <span className="v">{v != null ? v.toFixed(1) : '--'}% {idx != null && <span className="d">{phaseKeys[i]}</span>}</span></div>
+          }}
+        />
+      </div>
+      <div className="chart-card">
+        <ScrubbableLine
+          data={{ labels, datasets: [{ data: pMuVals, borderColor: '#a6e3a1', backgroundColor: hexToRgba('#a6e3a1', 0.2), fill: true }] }}
+          options={baseChartOpts()}
+          width={canvasW} height={120}
+          style={{ width: canvasW, height: 120 }}
+          renderHead={(idx) => {
+            const i = idx ?? pickLast(pMuVals)
+            const v = pMuVals[i]
+            return <div className="card-head">Muscle % <span className="v">{v != null ? v.toFixed(1) : '--'}% {idx != null && <span className="d">{phaseKeys[i]}</span>}</span></div>
+          }}
+        />
+      </div>
+      <div className="chart-card">
+        <ScrubbableLine
+          data={{ labels, datasets: [{ data: pViVals, borderColor: '#cba6f7', backgroundColor: hexToRgba('#cba6f7', 0.2), fill: true }] }}
+          options={{ ...baseChartOpts(), scales: { x: { ticks: { color: '#6c7086', font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } }, y: { ticks: { color: '#6c7086', font: { size: 9 }, stepSize: 1 }, grid: { color: '#313244' }, suggestedMin: 0, suggestedMax: 8 } } }}
+          width={canvasW} height={90}
+          style={{ width: canvasW, height: 90 }}
+          renderHead={(idx) => {
+            const i = idx ?? pickLast(pViVals)
+            const v = pViVals[i]
+            return <div className="card-head">Visceral Fat <span className="v">{v ?? '--'} {idx != null && <span className="d">{phaseKeys[i]}</span>}</span></div>
+          }}
+        />
       </div>
 
       {/* Deltas */}
