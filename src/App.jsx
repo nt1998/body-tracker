@@ -158,17 +158,15 @@ const phaseBandsPlugin = {
 }
 ChartJS.register(phaseBandsPlugin)
 
-// Week-boundary markers — subtle vertical lines at Sun→Mon transitions
+// Week-boundary markers — small tick marks at x-axis for Sun→Mon transitions
 const weekMarkersPlugin = {
   id: 'weekMarkers',
-  beforeDatasetsDraw(chart) {
+  afterDatasetsDraw(chart) {
     const dates = chart.options.plugins?.weekMarkers?.dates
     if (!dates || dates.length < 2) return
     const { ctx, chartArea, scales } = chart
     ctx.save()
-    ctx.strokeStyle = 'rgba(137, 180, 250, 0.13)'
-    ctx.lineWidth = 1
-    ctx.setLineDash([])
+    ctx.fillStyle = 'rgba(137, 180, 250, 0.55)'
     for (let i = 1; i < dates.length; i++) {
       const cur = parseDate(dates[i])
       if (cur.getDay() !== 1) continue
@@ -177,10 +175,8 @@ const weekMarkersPlugin = {
       const xCur = scales.x.getPixelForValue(i)
       const xPrev = scales.x.getPixelForValue(i - 1)
       const x = (xCur + xPrev) / 2
-      ctx.beginPath()
-      ctx.moveTo(x, chartArea.top)
-      ctx.lineTo(x, chartArea.bottom)
-      ctx.stroke()
+      // Tick: 2px wide, 5px tall, straddling the axis baseline
+      ctx.fillRect(Math.round(x) - 1, chartArea.bottom - 2, 2, 5)
     }
     ctx.restore()
   }
@@ -219,6 +215,60 @@ function baseChartOpts(extraScales, phaseBands, dates) {
     elements: { point: { radius: 0 }, line: { tension: .35, borderWidth: 2 } }
   }
 }
+
+// ---- Celebration icons ----
+const BlackHoleIcon = () => (
+  <svg width="54" height="54" viewBox="0 0 54 54" className="celeb-svg">
+    <defs>
+      <radialGradient id="bhDisc" cx="50%" cy="50%" r="50%">
+        <stop offset="30%" stopColor="#000000" stopOpacity="1" />
+        <stop offset="45%" stopColor="#11111b" stopOpacity="1" />
+        <stop offset="58%" stopColor="#cba6f7" stopOpacity="0.9" />
+        <stop offset="72%" stopColor="#f9e2af" stopOpacity="0.85" />
+        <stop offset="90%" stopColor="#fab387" stopOpacity="0.35" />
+        <stop offset="100%" stopColor="#fab387" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="bhCore" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stopColor="#000000" />
+        <stop offset="85%" stopColor="#000000" />
+        <stop offset="100%" stopColor="#11111b" />
+      </radialGradient>
+    </defs>
+    <circle cx="27" cy="27" r="26" fill="url(#bhDisc)" />
+    <circle cx="27" cy="27" r="10" fill="url(#bhCore)" />
+  </svg>
+)
+const StarIcon = () => (
+  <svg width="46" height="46" viewBox="0 0 46 46" className="celeb-svg">
+    <defs>
+      <radialGradient id="starGrad">
+        <stop offset="0%" stopColor="#ffffff" />
+        <stop offset="50%" stopColor="#f9e2af" />
+        <stop offset="100%" stopColor="#fab387" />
+      </radialGradient>
+    </defs>
+    <polygon
+      points="23,2 28,17 44,17 31,27 36,43 23,33 10,43 15,27 2,17 18,17"
+      fill="url(#starGrad)"
+      stroke="#fff5d5"
+      strokeWidth="0.5"
+    />
+  </svg>
+)
+const PlanetIcon = () => (
+  <svg width="54" height="54" viewBox="0 0 54 54" className="celeb-svg">
+    <defs>
+      <radialGradient id="planetBody" cx="38%" cy="35%" r="70%">
+        <stop offset="0%" stopColor="#fab387" />
+        <stop offset="60%" stopColor="#d85e3c" />
+        <stop offset="100%" stopColor="#7a2e1e" />
+      </radialGradient>
+    </defs>
+    <ellipse cx="27" cy="28" rx="21" ry="5" fill="none" stroke="#f9e2af" strokeWidth="2.5" opacity="0.5" transform="rotate(-18 27 28)" />
+    <circle cx="27" cy="27" r="13" fill="url(#planetBody)" />
+    <path d="M 8.3 20 a 21 5 -18 0 0 37.4 14" fill="none" stroke="#f9e2af" strokeWidth="2.5" opacity="0.95" />
+  </svg>
+)
 
 // ---- SVG Tab Icons ----
 const SunIcon = () => (
@@ -695,7 +745,7 @@ function App() {
                   style={{ cursor: allDone ? 'pointer' : 'default' }}
                 >
                   {allDone ? (
-                    <div className="celebration-icon">🏆</div>
+                    <div className="celebration-icon"><BlackHoleIcon /></div>
                   ) : (
                     <>
                       <div className="frac">
