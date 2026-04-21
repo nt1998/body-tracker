@@ -81,9 +81,9 @@ function addDays(s, n) {
 function weightAvgDeltaSeries(keys, entries) {
   if (!keys || keys.length === 0) return []
   const firstKey = keys[0]
-  const avgEnding = (endKey) => {
+  const avgEnding = (endKey, days) => {
     if (endKey < firstKey) return null
-    const startKey = addDays(endKey, -3)
+    const startKey = addDays(endKey, -(days - 1))
     const winStart = startKey < firstKey ? firstKey : startKey
     const vals = []
     for (const k of keys) {
@@ -96,9 +96,15 @@ function weightAvgDeltaSeries(keys, entries) {
   }
   return keys.map(k => {
     const priorEnd = addDays(k, -7)
-    if (addDays(priorEnd, -3) < firstKey) return null
-    const cur = avgEnding(k)
-    const prior = avgEnding(priorEnd)
+    if (priorEnd < firstKey) return null
+    const priorStartNom = addDays(priorEnd, -3)
+    let n = 4
+    if (priorStartNom < firstKey) {
+      const diffDays = Math.round((parseDate(priorEnd) - parseDate(firstKey)) / 86400000)
+      n = Math.max(1, diffDays + 1)
+    }
+    const cur = avgEnding(k, n)
+    const prior = avgEnding(priorEnd, n)
     return (cur != null && prior != null) ? +(cur - prior).toFixed(3) : null
   })
 }
