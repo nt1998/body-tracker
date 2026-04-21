@@ -1188,7 +1188,7 @@ function WeightTrendChart({ keys, entries, opts }) {
         data={{
           labels,
           datasets: [
-            { data: series, borderColor: '#f38ba8', backgroundColor: hexToRgba('#f38ba8', 0.15), fill: true },
+            { data: series, borderColor: '#89b4fa', backgroundColor: hexToRgba('#89b4fa', 0.15), fill: true },
             { data: series.map(() => 0), borderColor: '#45475a', borderDash: [4, 4], borderWidth: 1, fill: false, pointRadius: 0 },
           ]
         }}
@@ -1199,7 +1199,7 @@ function WeightTrendChart({ keys, entries, opts }) {
           const i = idx ?? pickLast(series)
           const v = series[i]
           const sign = v == null ? '' : (v >= 0 ? '+' : '')
-          return <div className="card-head">Weight trend 4d avg -- 7d delta <span className="v">{v != null ? `${sign}${v.toFixed(2)} kg` : '--'} {idx != null && <span className="d">{keys[i]}</span>}</span></div>
+          return <div className="card-head">7 Day Weight Delta <span className="v">{v != null ? `${sign}${v.toFixed(2)} kg` : '--'} {idx != null && <span className="d">{keys[i]}</span>}</span></div>
         }}
       />
     </div>
@@ -1288,7 +1288,7 @@ function JourneyPanel({ entries, phases, sortedDates: allDates }) {
           }}
         />
       </div>
-      <div className="stat-section-title">Weight trend (4d avg -- 7d delta)</div>
+      <div className="stat-section-title">7 Day Weight Delta</div>
       <WeightTrendChart keys={sortedDates} entries={entries} opts={journeyOpts()} />
 
       <div className="stat-section-title">Body composition</div>
@@ -1597,7 +1597,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
           }}
         />
       </div>
-      <div className="stat-section-title">Weight trend (4d avg -- 7d delta)</div>
+      <div className="stat-section-title">7 Day Weight Delta</div>
       <WeightTrendChart keys={phaseKeys} entries={entries} opts={phaseOpts()} />
 
       <div className="stat-section-title">Phase body composition</div>
