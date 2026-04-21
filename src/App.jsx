@@ -78,6 +78,30 @@ function addDays(s, n) {
   return dateKey(d)
 }
 
+function weightAvgTrend(keys, entries) {
+  if (!keys || keys.length === 0) return null
+  const firstKey = keys[0]
+  const lastKey = keys[keys.length - 1]
+  const avgEnding = (endKey) => {
+    if (endKey < firstKey) return null
+    const startKey = addDays(endKey, -3)
+    const winStart = startKey < firstKey ? firstKey : startKey
+    const vals = []
+    for (const k of keys) {
+      if (k < winStart) continue
+      if (k > endKey) break
+      const w = parseFloat(entries[k]?.weight)
+      if (!isNaN(w)) vals.push(w)
+    }
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+  }
+  const current = avgEnding(lastKey)
+  const priorEndKey = addDays(lastKey, -7)
+  const prior = priorEndKey < firstKey ? null : avgEnding(priorEndKey)
+  const delta = (current != null && prior != null) ? current - prior : null
+  return { current, prior, delta, currentDate: lastKey, priorDate: priorEndKey }
+}
+
 function formatDateLabel(s) {
   const d = parseDate(s)
   return `${DAY_NAMES[d.getDay()]} ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`
@@ -1142,6 +1166,26 @@ function ScrubbableLine({ data, options, width, height, style, renderHead }) {
 // ====================================================================
 // JOURNEY PANEL
 // ====================================================================
+function WeightTrendCard({ keys, entries }) {
+  const trend = weightAvgTrend(keys, entries)
+  if (!trend || trend.current == null) return null
+  const { current, prior, delta } = trend
+  const deltaColor = delta == null ? '#6c7086' : (delta < 0 ? '#a6e3a1' : delta > 0 ? '#f38ba8' : '#6c7086')
+  return (
+    <div className="adv-metric">
+      <div className="am-left">
+        <div className="am-label">Weight trend -- 4d avg, 7d apart</div>
+        <div className="am-sub">
+          {prior != null ? `${prior.toFixed(2)} ${'→'} ${current.toFixed(2)} kg` : `${current.toFixed(2)} kg (no prior data)`}
+        </div>
+      </div>
+      <div className="am-val" style={{ '--c': deltaColor }}>
+        {delta == null ? '--' : `${delta >= 0 ? '+' : ''}${delta.toFixed(2)} kg`}
+      </div>
+    </div>
+  )
+}
+
 function JourneyPanel({ entries, phases, sortedDates: allDates }) {
   const firstPhaseStart = phases.length > 0 ? phases.map(p => p.start).sort()[0] : null
   const sortedDates = firstPhaseStart ? allDates.filter(d => d >= firstPhaseStart) : allDates
@@ -1224,6 +1268,7 @@ function JourneyPanel({ entries, phases, sortedDates: allDates }) {
           }}
         />
       </div>
+      <WeightTrendCard keys={sortedDates} entries={entries} />
 
       <div className="stat-section-title">Body composition</div>
       <div className="chart-card">
@@ -1531,6 +1576,7 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
           }}
         />
       </div>
+      <WeightTrendCard keys={phaseKeys} entries={entries} />
 
       <div className="stat-section-title">Phase body composition</div>
       <div className="chart-card">
