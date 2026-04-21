@@ -78,10 +78,9 @@ function addDays(s, n) {
   return dateKey(d)
 }
 
-function weightAvgTrend(keys, entries) {
-  if (!keys || keys.length === 0) return null
+function weightAvgDeltaSeries(keys, entries) {
+  if (!keys || keys.length === 0) return []
   const firstKey = keys[0]
-  const lastKey = keys[keys.length - 1]
   const avgEnding = (endKey) => {
     if (endKey < firstKey) return null
     const startKey = addDays(endKey, -3)
@@ -95,11 +94,13 @@ function weightAvgTrend(keys, entries) {
     }
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
   }
-  const current = avgEnding(lastKey)
-  const priorEndKey = addDays(lastKey, -7)
-  const prior = priorEndKey < firstKey ? null : avgEnding(priorEndKey)
-  const delta = (current != null && prior != null) ? current - prior : null
-  return { current, prior, delta, currentDate: lastKey, priorDate: priorEndKey }
+  return keys.map(k => {
+    const priorEnd = addDays(k, -7)
+    if (priorEnd < firstKey) return null
+    const cur = avgEnding(k)
+    const prior = avgEnding(priorEnd)
+    return (cur != null && prior != null) ? +(cur - prior).toFixed(3) : null
+  })
 }
 
 function formatDateLabel(s) {
@@ -1166,22 +1167,33 @@ function ScrubbableLine({ data, options, width, height, style, renderHead }) {
 // ====================================================================
 // JOURNEY PANEL
 // ====================================================================
-function WeightTrendCard({ keys, entries }) {
-  const trend = weightAvgTrend(keys, entries)
-  if (!trend || trend.current == null) return null
-  const { current, prior, delta } = trend
-  const deltaColor = delta == null ? '#6c7086' : (delta < 0 ? '#a6e3a1' : delta > 0 ? '#f38ba8' : '#6c7086')
+function WeightTrendChart({ keys, entries, opts }) {
+  const series = weightAvgDeltaSeries(keys, entries)
+  const hasData = series.some(v => v != null)
+  if (!hasData) return null
+  const canvasW = 337
+  const labels = keys.map(k => k.slice(5))
+  const pickLast = (arr) => { for (let j = arr.length - 1; j >= 0; j--) if (arr[j] != null) return j; return arr.length - 1 }
   return (
-    <div className="adv-metric">
-      <div className="am-left">
-        <div className="am-label">Weight trend -- 4d avg, 7d apart</div>
-        <div className="am-sub">
-          {prior != null ? `${prior.toFixed(2)} ${'→'} ${current.toFixed(2)} kg` : `${current.toFixed(2)} kg (no prior data)`}
-        </div>
-      </div>
-      <div className="am-val" style={{ '--c': deltaColor }}>
-        {delta == null ? '--' : `${delta >= 0 ? '+' : ''}${delta.toFixed(2)} kg`}
-      </div>
+    <div className="chart-card">
+      <ScrubbableLine
+        data={{
+          labels,
+          datasets: [
+            { data: series, borderColor: '#f38ba8', backgroundColor: hexToRgba('#f38ba8', 0.15), fill: true },
+            { data: series.map(() => 0), borderColor: '#45475a', borderDash: [4, 4], borderWidth: 1, fill: false, pointRadius: 0 },
+          ]
+        }}
+        options={opts}
+        width={canvasW} height={120}
+        style={{ width: canvasW, height: 120 }}
+        renderHead={(idx) => {
+          const i = idx ?? pickLast(series)
+          const v = series[i]
+          const sign = v == null ? '' : (v >= 0 ? '+' : '')
+          return <div className="card-head">Weight trend 4d avg -- 7d delta <span className="v">{v != null ? `${sign}${v.toFixed(2)} kg` : '--'} {idx != null && <span className="d">{keys[i]}</span>}</span></div>
+        }}
+      />
     </div>
   )
 }
@@ -1268,7 +1280,8 @@ function JourneyPanel({ entries, phases, sortedDates: allDates }) {
           }}
         />
       </div>
-      <WeightTrendCard keys={sortedDates} entries={entries} />
+      <div className="stat-section-title">Weight trend (4d avg -- 7d delta)</div>
+      <WeightTrendChart keys={sortedDates} entries={entries} opts={journeyOpts()} />
 
       <div className="stat-section-title">Body composition</div>
       <div className="chart-card">
@@ -1576,7 +1589,8 @@ function PhasePanel({ entries, phases, sortedDates, statsPhaseIdx, setStatsPhase
           }}
         />
       </div>
-      <WeightTrendCard keys={phaseKeys} entries={entries} />
+      <div className="stat-section-title">Weight trend (4d avg -- 7d delta)</div>
+      <WeightTrendChart keys={phaseKeys} entries={entries} opts={phaseOpts()} />
 
       <div className="stat-section-title">Phase body composition</div>
       <div className="chart-card">
