@@ -1180,6 +1180,8 @@ function WeightTrendChart({ keys, entries, opts }) {
   const canvasW = 337
   const labels = keys.map(k => k.slice(5))
   const pickLast = (arr) => { for (let j = arr.length - 1; j >= 0; j--) if (arr[j] != null) return j; return arr.length - 1 }
+  const absMax = Math.max(1, ...series.filter(v => v != null).map(v => Math.abs(v)))
+  const boundedOpts = { ...opts, scales: { ...(opts.scales || {}), y: { ...((opts.scales && opts.scales.y) || {}), min: -absMax, max: absMax } } }
   return (
     <div className="chart-card">
       <ScrubbableLine
@@ -1190,7 +1192,7 @@ function WeightTrendChart({ keys, entries, opts }) {
             { data: series.map(() => 0), borderColor: '#45475a', borderDash: [4, 4], borderWidth: 1, fill: false, pointRadius: 0 },
           ]
         }}
-        options={opts}
+        options={boundedOpts}
         width={canvasW} height={120}
         style={{ width: canvasW, height: 120 }}
         renderHead={(idx) => {
