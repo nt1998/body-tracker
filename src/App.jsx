@@ -96,7 +96,7 @@ function weightAvgDeltaSeries(keys, entries) {
   }
   return keys.map(k => {
     const priorEnd = addDays(k, -7)
-    if (priorEnd < firstKey) return null
+    if (addDays(priorEnd, -3) < firstKey) return null
     const cur = avgEnding(k)
     const prior = avgEnding(priorEnd)
     return (cur != null && prior != null) ? +(cur - prior).toFixed(3) : null
