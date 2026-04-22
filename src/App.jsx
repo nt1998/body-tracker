@@ -990,17 +990,6 @@ function App() {
               window.location.reload()
             }}>Reload App</button>
             {needsSync && <p style={{ fontSize: 11, color: '#6c7086', marginTop: 8 }}>Changes pending sync</p>}
-            <button className="danger-btn" style={{ marginTop: 24 }} onClick={() => {
-              if (!confirm('Delete ALL body-tracker data? Wipes entries, phases, gym snapshot. Cannot undo.')) return
-              if (!confirm('Really? Last chance.')) return
-              localStorage.removeItem('bodytracker_entries')
-              localStorage.removeItem('bodytracker_phases')
-              localStorage.removeItem('bodytracker_gymworkouts')
-              localStorage.removeItem('bodytracker_lastsync')
-              setEntries({})
-              setPhases([])
-              setGymWorkouts({})
-            }}>Delete All Data</button>
             <p className="version-text">v0.3.0</p>
           </>
         )}
