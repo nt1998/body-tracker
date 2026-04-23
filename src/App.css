@@ -129,10 +129,15 @@ body:has(textarea:focus) .tabbar {
   pointer-events: none;
   transition: transform 0.2s;
 }
+@property --glow {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
 .tabbar button {
+  --glow: 0;
   flex: none;
   border: 0;
-  color: #6c7086;
   font-family: inherit;
   font-size: 0;
   display: flex;
@@ -142,37 +147,25 @@ body:has(textarea:focus) .tabbar {
   justify-content: center;
   cursor: pointer;
   pointer-events: auto;
-  width: 50px;
-  height: 50px;
+  width: calc(50px + var(--glow) * 8px);
+  height: calc(50px + var(--glow) * 8px);
   border-radius: 50%;
-  background: linear-gradient(145deg, rgba(49,50,68,.7), rgba(30,30,46,.85));
-  box-shadow: 4px 4px 10px rgba(17,17,27,.6),
-              -3px -3px 7px rgba(69,71,90,.2),
-              inset 0 0 10px rgba(137,180,250,0),
-              0 0 18px rgba(137,180,250,0),
-              0 0 6px rgba(137,180,250,0);
-  text-shadow: 0 0 10px rgba(137,180,250,0);
-  transition:
-    color .45s cubic-bezier(.4,0,.2,1),
-    width .45s cubic-bezier(.4,0,.2,1),
-    height .45s cubic-bezier(.4,0,.2,1),
-    background .45s cubic-bezier(.4,0,.2,1),
-    box-shadow .45s cubic-bezier(.4,0,.2,1),
-    text-shadow .45s cubic-bezier(.4,0,.2,1),
-    transform .12s ease;
+  color: color-mix(in srgb, #6c7086, #89b4fa calc(var(--glow) * 100%));
+  background: linear-gradient(145deg,
+    rgba(49,50,68, calc(.7 + var(--glow) * .1)),
+    rgba(30,30,46, calc(.85 + var(--glow) * .1))
+  );
+  box-shadow:
+    calc(4px + var(--glow) * 1px) calc(4px + var(--glow) * 1px) calc(10px + var(--glow) * 2px) rgba(17,17,27,.6),
+    -3px -3px calc(7px + var(--glow) * 1px) rgba(69,71,90, calc(.2 + var(--glow) * .02)),
+    inset 0 0 10px rgba(137,180,250, calc(var(--glow) * .1)),
+    0 0 18px rgba(137,180,250, calc(var(--glow) * .25)),
+    0 0 6px rgba(137,180,250, calc(var(--glow) * .15));
+  text-shadow: 0 0 10px rgba(137,180,250, calc(var(--glow) * .4));
+  transition: --glow .45s cubic-bezier(.4,0,.2,1), transform .12s ease;
 }
-.tabbar button.active {
-  color: #89b4fa;
-  width: 58px;
-  height: 58px;
-  background: linear-gradient(145deg, rgba(49,50,68,.8), rgba(30,30,46,.95));
-  box-shadow: 5px 5px 12px rgba(17,17,27,.6),
-              -3px -3px 8px rgba(69,71,90,.22),
-              inset 0 0 10px rgba(137,180,250,.1),
-              0 0 18px rgba(137,180,250,.25),
-              0 0 6px rgba(137,180,250,.15);
-  text-shadow: 0 0 10px rgba(137,180,250,.4);
-}
+.tabbar button.active { --glow: 1; }
+.tabbar button.swiping { transition: transform .12s ease; }
 .tabbar button:active {
   transform: scale(0.93);
   box-shadow: inset 3px 3px 6px rgba(17,17,27,.7),

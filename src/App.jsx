@@ -340,6 +340,7 @@ function App() {
   const [tab, setTab] = useState('today')
   const [swipeDx, setSwipeDx] = useState(0)
   const [swipeAnim, setSwipeAnim] = useState(false)
+  const [isSwiping, setIsSwiping] = useState(false)
   const swipeRef = useRef(null)
   const suppressClickUntil = useRef(0)
   const appRef = useRef(null)
@@ -781,11 +782,12 @@ function App() {
     if ((idx === 0 && dx > 0) || (idx === TABS.length - 1 && dx < 0)) adj = dx * 0.25
     s.active = true
     setSwipeDx(adj)
+    setIsSwiping(true)
   }
   const onSwipeTouchEnd = () => {
     const s = swipeRef.current
     swipeRef.current = null
-    if (!s) { setSwipeDx(0); return }
+    if (!s) { setSwipeDx(0); setIsSwiping(false); return }
     const dt = Date.now() - s.t0
     const dx = swipeDx
     const idx = TABS.indexOf(tab)
@@ -796,16 +798,30 @@ function App() {
     if (commit && dx < 0 && idx < TABS.length - 1) {
       suppressClickUntil.current = Date.now() + 400
       setSwipeDx(-w)
-      setTimeout(() => { setSwipeAnim(false); setSwipeDx(0); setTab(TABS[idx + 1]) }, 180)
+      setTimeout(() => { setSwipeAnim(false); setSwipeDx(0); setTab(TABS[idx + 1]); setIsSwiping(false) }, 180)
     } else if (commit && dx > 0 && idx > 0) {
       suppressClickUntil.current = Date.now() + 400
       setSwipeDx(w)
-      setTimeout(() => { setSwipeAnim(false); setSwipeDx(0); setTab(TABS[idx - 1]) }, 180)
+      setTimeout(() => { setSwipeAnim(false); setSwipeDx(0); setTab(TABS[idx - 1]); setIsSwiping(false) }, 180)
     } else {
       setSwipeDx(0)
+      setIsSwiping(false)
       setTimeout(() => setSwipeAnim(false), 180)
     }
   }
+  const GLOW_RANGE_PX = 100
+  const getTabGlow = (tabId) => {
+    const activeIdx = TABS.indexOf(tab)
+    const i = TABS.indexOf(tabId)
+    if (!isSwiping) return i === activeIdx ? 1 : 0
+    const progress = Math.min(1, Math.abs(swipeDx) / GLOW_RANGE_PX)
+    const targetIdx = swipeDx < 0 ? activeIdx + 1 : swipeDx > 0 ? activeIdx - 1 : activeIdx
+    if (i === activeIdx) return 1 - progress
+    if (i === targetIdx && targetIdx >= 0 && targetIdx < TABS.length) return progress
+    return 0
+  }
+  const tabCls = (tabId) => `${tab === tabId ? 'active' : ''}${isSwiping ? ' swiping' : ''}`
+  const tabStl = (tabId) => ({ '--glow': getTabGlow(tabId) })
   const onSwipeClickCapture = (e) => {
     if (Date.now() < suppressClickUntil.current) {
       e.preventDefault()
@@ -1109,13 +1125,13 @@ function App() {
 
       {/* ---- Tab bar ---- */}
       <nav className="tabbar">
-        <button className={tab === 'today' ? 'active' : ''} onClick={() => setTab('today')}>
+        <button className={tabCls('today')} style={tabStl('today')} onClick={() => setTab('today')}>
           <span className="glyph"><SunIcon /></span>
         </button>
-        <button className={tab === 'stats' ? 'active' : ''} onClick={() => setTab('stats')}>
+        <button className={tabCls('stats')} style={tabStl('stats')} onClick={() => setTab('stats')}>
           <span className="glyph"><ChartIcon /></span>
         </button>
-        <button className={tab === 'settings' ? 'active' : ''} onClick={() => { setTab('settings'); fetchCommitsToday() }}>
+        <button className={tabCls('settings')} style={tabStl('settings')} onClick={() => { setTab('settings'); fetchCommitsToday() }}>
           <span className="glyph"><GearIcon /></span>
         </button>
       </nav>
