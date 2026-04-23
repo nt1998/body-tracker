@@ -149,7 +149,14 @@ body:has(textarea:focus) .tabbar {
   box-shadow: 4px 4px 10px rgba(17,17,27,.6),
               -3px -3px 7px rgba(69,71,90,.2),
               inset 0 1px 0 rgba(88,91,112,.12);
-  transition: all .25s ease;
+  transition:
+    color .4s cubic-bezier(.4,0,.2,1),
+    width .4s cubic-bezier(.4,0,.2,1),
+    height .4s cubic-bezier(.4,0,.2,1),
+    background .4s cubic-bezier(.4,0,.2,1),
+    box-shadow .4s cubic-bezier(.4,0,.2,1),
+    text-shadow .4s cubic-bezier(.4,0,.2,1),
+    transform .12s ease;
 }
 .tabbar button.active {
   color: #89b4fa;
