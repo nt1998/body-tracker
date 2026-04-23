@@ -750,7 +750,7 @@ function App() {
   const SWIPE_THRESHOLD = 60
   const FLICK_MS = 250
   const FLICK_DX = 40
-  const GRAPH_HOLD_MS = 150
+  const GRAPH_HOLD_MS = 300
   const GLOW_RANGE_PX = 100
   const tabRef = useRef(tab)
   useEffect(() => { tabRef.current = tab }, [tab])
@@ -784,7 +784,7 @@ function App() {
       if (s.locked == null) {
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
         s.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'
-        if (s.locked === 'h' && s.flickOnly && Date.now() - s.t0 < GRAPH_HOLD_MS) {
+        if (s.locked === 'h' && s.flickOnly && Date.now() - s.t0 >= GRAPH_HOLD_MS) {
           s.scrubLocked = true
         }
       }
@@ -807,7 +807,7 @@ function App() {
       const dx = s.dx
       const idx = TABS.indexOf(tabRef.current)
       const flick = dt < FLICK_MS && Math.abs(dx) > FLICK_DX
-      const commit = s.scrubLocked ? false : (s.flickOnly ? flick : (Math.abs(dx) >= SWIPE_THRESHOLD || flick))
+      const commit = s.scrubLocked ? false : (Math.abs(dx) >= SWIPE_THRESHOLD || flick)
       if (commit && dx < 0 && idx < TABS.length - 1) {
         suppressClickUntil.current = Date.now() + 400
         setTab(TABS[idx + 1])
