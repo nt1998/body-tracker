@@ -746,68 +746,89 @@ function App() {
   const isYesterdayValue = (field) => !entryRecorded && !entries[date]?.[field] && entries[addDays(date, -1)]?.[field]
 
 
-  // ---- Swipe nav between tabs ----
+  // ---- Swipe nav between tabs (native capture listeners to outrank child scrub handlers) ----
   const SWIPE_THRESHOLD = 60
   const FLICK_MS = 250
   const FLICK_DX = 40
-  const onSwipeTouchStart = (e) => {
-    if (e.touches.length !== 1) { swipeRef.current = null; return }
-    const t = e.target
-    if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"], .no-swipe')) {
-      swipeRef.current = null
-      return
-    }
-    const flickOnly = !!(t && t.closest && t.closest('svg, canvas, .flick-only'))
-    swipeRef.current = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
-      t0: Date.now(),
-      locked: null,
-      active: false,
-      flickOnly,
-    }
-  }
   const GRAPH_HOLD_MS = 150
-  const onSwipeTouchMove = (e) => {
-    const s = swipeRef.current
-    if (!s) return
-    const dx = e.touches[0].clientX - s.x
-    const dy = e.touches[0].clientY - s.y
-    if (s.locked == null) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
-      s.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'
-      if (s.locked === 'h' && s.flickOnly && Date.now() - s.t0 < GRAPH_HOLD_MS) {
-        s.scrubLocked = true
+  const GLOW_RANGE_PX = 100
+  const tabRef = useRef(tab)
+  useEffect(() => { tabRef.current = tab }, [tab])
+  useEffect(() => {
+    const el = appRef.current
+    if (!el) return
+    const onStart = (e) => {
+      if (e.touches.length !== 1) { swipeRef.current = null; return }
+      const t = e.target
+      if (t?.closest?.('input, textarea, select, [contenteditable="true"], .no-swipe')) {
+        swipeRef.current = null
+        return
+      }
+      const flickOnly = !!t?.closest?.('svg, canvas, .flick-only')
+      swipeRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        t0: Date.now(),
+        locked: null,
+        active: false,
+        flickOnly,
+        scrubLocked: false,
+        dx: 0,
       }
     }
-    if (s.locked !== 'h' || s.scrubLocked) return
-    const idx = TABS.indexOf(tab)
-    let adj = dx
-    if ((idx === 0 && dx > 0) || (idx === TABS.length - 1 && dx < 0)) adj = dx * 0.25
-    s.active = true
-    setSwipeDx(adj)
-    setIsSwiping(true)
-  }
-  const onSwipeTouchEnd = () => {
-    const s = swipeRef.current
-    swipeRef.current = null
-    if (!s) { setSwipeDx(0); setIsSwiping(false); return }
-    const dt = Date.now() - s.t0
-    const dx = swipeDx
-    const idx = TABS.indexOf(tab)
-    const flick = dt < FLICK_MS && Math.abs(dx) > FLICK_DX
-    const commit = s.scrubLocked ? false : (s.flickOnly ? flick : (Math.abs(dx) >= SWIPE_THRESHOLD || flick))
-    if (commit && dx < 0 && idx < TABS.length - 1) {
-      suppressClickUntil.current = Date.now() + 400
-      setTab(TABS[idx + 1])
-    } else if (commit && dx > 0 && idx > 0) {
-      suppressClickUntil.current = Date.now() + 400
-      setTab(TABS[idx - 1])
+    const onMove = (e) => {
+      const s = swipeRef.current
+      if (!s) return
+      const dx = e.touches[0].clientX - s.x
+      const dy = e.touches[0].clientY - s.y
+      if (s.locked == null) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+        s.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'
+        if (s.locked === 'h' && s.flickOnly && Date.now() - s.t0 < GRAPH_HOLD_MS) {
+          s.scrubLocked = true
+        }
+      }
+      if (s.locked !== 'h' || s.scrubLocked) return
+      e.preventDefault()
+      e.stopPropagation()
+      const idx = TABS.indexOf(tabRef.current)
+      let adj = dx
+      if ((idx === 0 && dx > 0) || (idx === TABS.length - 1 && dx < 0)) adj = dx * 0.25
+      s.active = true
+      s.dx = adj
+      setSwipeDx(adj)
+      setIsSwiping(true)
     }
-    setSwipeDx(0)
-    setIsSwiping(false)
-  }
-  const GLOW_RANGE_PX = 100
+    const onEnd = () => {
+      const s = swipeRef.current
+      swipeRef.current = null
+      if (!s) { setSwipeDx(0); setIsSwiping(false); return }
+      const dt = Date.now() - s.t0
+      const dx = s.dx
+      const idx = TABS.indexOf(tabRef.current)
+      const flick = dt < FLICK_MS && Math.abs(dx) > FLICK_DX
+      const commit = s.scrubLocked ? false : (s.flickOnly ? flick : (Math.abs(dx) >= SWIPE_THRESHOLD || flick))
+      if (commit && dx < 0 && idx < TABS.length - 1) {
+        suppressClickUntil.current = Date.now() + 400
+        setTab(TABS[idx + 1])
+      } else if (commit && dx > 0 && idx > 0) {
+        suppressClickUntil.current = Date.now() + 400
+        setTab(TABS[idx - 1])
+      }
+      setSwipeDx(0)
+      setIsSwiping(false)
+    }
+    el.addEventListener('touchstart', onStart, { passive: true, capture: true })
+    el.addEventListener('touchmove', onMove, { passive: false, capture: true })
+    el.addEventListener('touchend', onEnd, { passive: true, capture: true })
+    el.addEventListener('touchcancel', onEnd, { passive: true, capture: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart, { capture: true })
+      el.removeEventListener('touchmove', onMove, { capture: true })
+      el.removeEventListener('touchend', onEnd, { capture: true })
+      el.removeEventListener('touchcancel', onEnd, { capture: true })
+    }
+  }, [])
   const getTabGlow = (tabId) => {
     const activeIdx = TABS.indexOf(tab)
     const i = TABS.indexOf(tabId)
@@ -826,16 +847,6 @@ function App() {
       e.stopPropagation()
     }
   }
-  // Non-passive touchmove: block browser scroll while horizontal swipe is active
-  useEffect(() => {
-    const el = appRef.current
-    if (!el) return
-    const block = (e) => {
-      if (swipeRef.current?.locked === 'h') e.preventDefault()
-    }
-    el.addEventListener('touchmove', block, { passive: false })
-    return () => el.removeEventListener('touchmove', block)
-  }, [])
 
   // =====================================================
   // RENDER
@@ -844,10 +855,6 @@ function App() {
     <div
       ref={appRef}
       className="app"
-      onTouchStart={onSwipeTouchStart}
-      onTouchMove={onSwipeTouchMove}
-      onTouchEnd={onSwipeTouchEnd}
-      onTouchCancel={onSwipeTouchEnd}
       onClickCapture={onSwipeClickCapture}
     >
       <main className="content" key={tab}>
