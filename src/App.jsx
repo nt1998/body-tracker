@@ -339,7 +339,6 @@ function App() {
   // ---- State ----
   const [tab, setTab] = useState('today')
   const [swipeDx, setSwipeDx] = useState(0)
-  const [swipeAnim, setSwipeAnim] = useState(false)
   const [isSwiping, setIsSwiping] = useState(false)
   const swipeRef = useRef(null)
   const suppressClickUntil = useRef(0)
@@ -765,7 +764,6 @@ function App() {
       locked: null,
       active: false,
     }
-    setSwipeAnim(false)
   }
   const onSwipeTouchMove = (e) => {
     const s = swipeRef.current
@@ -791,23 +789,17 @@ function App() {
     const dt = Date.now() - s.t0
     const dx = swipeDx
     const idx = TABS.indexOf(tab)
-    const w = window.innerWidth || 375
     const flick = dt < FLICK_MS && Math.abs(dx) > FLICK_DX
     const commit = Math.abs(dx) >= SWIPE_THRESHOLD || flick
-    setSwipeAnim(true)
     if (commit && dx < 0 && idx < TABS.length - 1) {
       suppressClickUntil.current = Date.now() + 400
-      setSwipeDx(-w)
-      setTimeout(() => { setSwipeAnim(false); setSwipeDx(0); setTab(TABS[idx + 1]); setIsSwiping(false) }, 180)
+      setTab(TABS[idx + 1])
     } else if (commit && dx > 0 && idx > 0) {
       suppressClickUntil.current = Date.now() + 400
-      setSwipeDx(w)
-      setTimeout(() => { setSwipeAnim(false); setSwipeDx(0); setTab(TABS[idx - 1]); setIsSwiping(false) }, 180)
-    } else {
-      setSwipeDx(0)
-      setIsSwiping(false)
-      setTimeout(() => setSwipeAnim(false), 180)
+      setTab(TABS[idx - 1])
     }
+    setSwipeDx(0)
+    setIsSwiping(false)
   }
   const GLOW_RANGE_PX = 100
   const getTabGlow = (tabId) => {
@@ -852,14 +844,7 @@ function App() {
       onTouchCancel={onSwipeTouchEnd}
       onClickCapture={onSwipeClickCapture}
     >
-      <main
-        className="content"
-        key={tab}
-        style={{
-          transform: swipeDx ? `translateX(${swipeDx}px)` : undefined,
-          transition: swipeAnim ? 'transform 180ms ease-out' : undefined,
-        }}
-      >
+      <main className="content" key={tab}>
 
         {/* ==================== TODAY TAB ==================== */}
         {tab === 'today' && (
