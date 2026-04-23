@@ -148,14 +148,17 @@ body:has(textarea:focus) .tabbar {
   background: linear-gradient(145deg, rgba(49,50,68,.7), rgba(30,30,46,.85));
   box-shadow: 4px 4px 10px rgba(17,17,27,.6),
               -3px -3px 7px rgba(69,71,90,.2),
-              inset 0 1px 0 rgba(88,91,112,.12);
+              inset 0 0 10px rgba(137,180,250,0),
+              0 0 18px rgba(137,180,250,0),
+              0 0 6px rgba(137,180,250,0);
+  text-shadow: 0 0 10px rgba(137,180,250,0);
   transition:
-    color .4s cubic-bezier(.4,0,.2,1),
-    width .4s cubic-bezier(.4,0,.2,1),
-    height .4s cubic-bezier(.4,0,.2,1),
-    background .4s cubic-bezier(.4,0,.2,1),
-    box-shadow .4s cubic-bezier(.4,0,.2,1),
-    text-shadow .4s cubic-bezier(.4,0,.2,1),
+    color .45s cubic-bezier(.4,0,.2,1),
+    width .45s cubic-bezier(.4,0,.2,1),
+    height .45s cubic-bezier(.4,0,.2,1),
+    background .45s cubic-bezier(.4,0,.2,1),
+    box-shadow .45s cubic-bezier(.4,0,.2,1),
+    text-shadow .45s cubic-bezier(.4,0,.2,1),
     transform .12s ease;
 }
 .tabbar button.active {
@@ -165,9 +168,9 @@ body:has(textarea:focus) .tabbar {
   background: linear-gradient(145deg, rgba(49,50,68,.8), rgba(30,30,46,.95));
   box-shadow: 5px 5px 12px rgba(17,17,27,.6),
               -3px -3px 8px rgba(69,71,90,.22),
-              0 0 18px rgba(137,180,250,.2),
-              0 0 6px rgba(137,180,250,.12),
-              inset 0 0 10px rgba(137,180,250,.1);
+              inset 0 0 10px rgba(137,180,250,.1),
+              0 0 18px rgba(137,180,250,.25),
+              0 0 6px rgba(137,180,250,.15);
   text-shadow: 0 0 10px rgba(137,180,250,.4);
 }
 .tabbar button:active {
