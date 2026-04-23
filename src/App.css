@@ -13,6 +13,8 @@
   padding-top: env(safe-area-inset-top, 0);
   -webkit-user-select: none;
   user-select: none;
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
 }
 .app input, .app textarea {
   -webkit-user-select: text;

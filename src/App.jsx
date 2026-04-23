@@ -771,8 +771,8 @@ function App() {
     const dx = e.touches[0].clientX - s.x
     const dy = e.touches[0].clientY - s.y
     if (s.locked == null) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
-      s.locked = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+      s.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'
     }
     if (s.locked !== 'h') return
     const idx = TABS.indexOf(tab)
