@@ -767,6 +767,7 @@ function App() {
       flickOnly,
     }
   }
+  const GRAPH_HOLD_MS = 150
   const onSwipeTouchMove = (e) => {
     const s = swipeRef.current
     if (!s) return
@@ -775,8 +776,11 @@ function App() {
     if (s.locked == null) {
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
       s.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'
+      if (s.locked === 'h' && s.flickOnly && Date.now() - s.t0 < GRAPH_HOLD_MS) {
+        s.scrubLocked = true
+      }
     }
-    if (s.locked !== 'h') return
+    if (s.locked !== 'h' || s.scrubLocked) return
     const idx = TABS.indexOf(tab)
     let adj = dx
     if ((idx === 0 && dx > 0) || (idx === TABS.length - 1 && dx < 0)) adj = dx * 0.25
@@ -792,7 +796,7 @@ function App() {
     const dx = swipeDx
     const idx = TABS.indexOf(tab)
     const flick = dt < FLICK_MS && Math.abs(dx) > FLICK_DX
-    const commit = s.flickOnly ? flick : (Math.abs(dx) >= SWIPE_THRESHOLD || flick)
+    const commit = s.scrubLocked ? false : (s.flickOnly ? flick : (Math.abs(dx) >= SWIPE_THRESHOLD || flick))
     if (commit && dx < 0 && idx < TABS.length - 1) {
       suppressClickUntil.current = Date.now() + 400
       setTab(TABS[idx + 1])
