@@ -757,12 +757,14 @@ function App() {
       swipeRef.current = null
       return
     }
+    const flickOnly = !!(t && t.closest && t.closest('svg, canvas, .flick-only'))
     swipeRef.current = {
       x: e.touches[0].clientX,
       y: e.touches[0].clientY,
       t0: Date.now(),
       locked: null,
       active: false,
+      flickOnly,
     }
   }
   const onSwipeTouchMove = (e) => {
@@ -790,7 +792,7 @@ function App() {
     const dx = swipeDx
     const idx = TABS.indexOf(tab)
     const flick = dt < FLICK_MS && Math.abs(dx) > FLICK_DX
-    const commit = Math.abs(dx) >= SWIPE_THRESHOLD || flick
+    const commit = s.flickOnly ? flick : (Math.abs(dx) >= SWIPE_THRESHOLD || flick)
     if (commit && dx < 0 && idx < TABS.length - 1) {
       suppressClickUntil.current = Date.now() + 400
       setTab(TABS[idx + 1])
