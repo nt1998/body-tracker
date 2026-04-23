@@ -333,9 +333,14 @@ function DeltaBadge({ val, unit, invertGood }) {
 // ====================================================================
 // APP
 // ====================================================================
+const TABS = ['today', 'stats', 'settings']
+
 function App() {
   // ---- State ----
   const [tab, setTab] = useState('today')
+  const [swipeDx, setSwipeDx] = useState(0)
+  const [swipeAnim, setSwipeAnim] = useState(false)
+  const swipeRef = useRef(null)
   const [statsTab, setStatsTab] = useState('journey')
   const [date, setDate] = useState(dateKey(new Date()))
   const [entries, setEntries] = useState({})
@@ -739,12 +744,77 @@ function App() {
   const isYesterdayValue = (field) => !entryRecorded && !entries[date]?.[field] && entries[addDays(date, -1)]?.[field]
 
 
+  // ---- Swipe nav between tabs ----
+  const SWIPE_THRESHOLD = 60 // px to commit tab change
+  const onSwipeTouchStart = (e) => {
+    if (e.touches.length !== 1) { swipeRef.current = null; return }
+    const t = e.target
+    // ignore swipes starting on interactive / scrollable inner elements
+    if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"], svg, canvas, .hscroll, .no-swipe')) {
+      swipeRef.current = null
+      return
+    }
+    swipeRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      locked: null, // 'h' | 'v' | null
+      active: false,
+    }
+    setSwipeAnim(false)
+  }
+  const onSwipeTouchMove = (e) => {
+    const s = swipeRef.current
+    if (!s) return
+    const dx = e.touches[0].clientX - s.x
+    const dy = e.touches[0].clientY - s.y
+    if (s.locked == null) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      s.locked = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+    }
+    if (s.locked !== 'h') return
+    const idx = TABS.indexOf(tab)
+    let adj = dx
+    if ((idx === 0 && dx > 0) || (idx === TABS.length - 1 && dx < 0)) adj = dx * 0.25 // resistance at edges
+    s.active = true
+    setSwipeDx(adj)
+  }
+  const onSwipeTouchEnd = () => {
+    const s = swipeRef.current
+    swipeRef.current = null
+    if (!s || !s.active) { setSwipeDx(0); return }
+    const dx = swipeDx
+    const idx = TABS.indexOf(tab)
+    const w = window.innerWidth || 375
+    setSwipeAnim(true)
+    if (dx <= -SWIPE_THRESHOLD && idx < TABS.length - 1) {
+      setSwipeDx(-w)
+      setTimeout(() => { setSwipeAnim(false); setSwipeDx(0); setTab(TABS[idx + 1]) }, 180)
+    } else if (dx >= SWIPE_THRESHOLD && idx > 0) {
+      setSwipeDx(w)
+      setTimeout(() => { setSwipeAnim(false); setSwipeDx(0); setTab(TABS[idx - 1]) }, 180)
+    } else {
+      setSwipeDx(0)
+      setTimeout(() => setSwipeAnim(false), 180)
+    }
+  }
+
   // =====================================================
   // RENDER
   // =====================================================
   return (
     <div className="app">
-      <main className="content" key={tab}>
+      <main
+        className="content"
+        key={tab}
+        onTouchStart={onSwipeTouchStart}
+        onTouchMove={onSwipeTouchMove}
+        onTouchEnd={onSwipeTouchEnd}
+        onTouchCancel={onSwipeTouchEnd}
+        style={{
+          transform: swipeDx ? `translateX(${swipeDx}px)` : undefined,
+          transition: swipeAnim ? 'transform 180ms ease-out' : undefined,
+        }}
+      >
 
         {/* ==================== TODAY TAB ==================== */}
         {tab === 'today' && (
